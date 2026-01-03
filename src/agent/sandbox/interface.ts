@@ -33,6 +33,11 @@ export interface ExecResult {
  */
 export interface Sandbox {
   /**
+   * The working directory for this sandbox.
+   * All path validations should be relative to this directory.
+   */
+  readonly workingDirectory: string;
+  /**
    * Read file contents as UTF-8 string
    */
   readFile(path: string, encoding: "utf-8"): Promise<string>;

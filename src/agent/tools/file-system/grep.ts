@@ -130,8 +130,8 @@ EXAMPLES:
     caseSensitive = true,
   }, { experimental_context }) => {
     const context = experimental_context as AgentContext | undefined;
-    const workingDirectory = context?.workingDirectory ?? process.cwd();
-    const sandbox = context?.sandbox ?? createLocalSandbox();
+    const sandbox = context?.sandbox ?? createLocalSandbox(process.cwd());
+    const workingDirectory = sandbox.workingDirectory;
 
     try {
       const flags = caseSensitive ? "g" : "gi";

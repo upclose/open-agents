@@ -134,8 +134,8 @@ EXAMPLES:
   inputSchema: bashInputSchema,
   execute: async ({ command, cwd }, { experimental_context }) => {
     const context = experimental_context as AgentContext | undefined;
-    const workingDirectory = context?.workingDirectory ?? process.cwd();
-    const sandbox = context?.sandbox ?? createLocalSandbox();
+    const sandbox = context?.sandbox ?? createLocalSandbox(process.cwd());
+    const workingDirectory = sandbox.workingDirectory;
 
     // Resolve the working directory
     const workingDir = cwd

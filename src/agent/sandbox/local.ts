@@ -10,6 +10,12 @@ const MAX_OUTPUT_LENGTH = 50_000;
  * This is the default sandbox used when no custom sandbox is provided.
  */
 export class LocalSandbox implements Sandbox {
+  readonly workingDirectory: string;
+
+  constructor(workingDirectory: string) {
+    this.workingDirectory = workingDirectory;
+  }
+
   async readFile(path: string, encoding: "utf-8"): Promise<string> {
     return fs.readFile(path, encoding);
   }
@@ -109,7 +115,9 @@ export class LocalSandbox implements Sandbox {
 /**
  * Create a new local sandbox instance.
  * Use this as the default when no custom sandbox is provided.
+ *
+ * @param workingDirectory - The root directory for sandbox operations
  */
-export function createLocalSandbox(): Sandbox {
-  return new LocalSandbox();
+export function createLocalSandbox(workingDirectory: string): Sandbox {
+  return new LocalSandbox(workingDirectory);
 }

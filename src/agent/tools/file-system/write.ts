@@ -68,8 +68,8 @@ EXAMPLES:
   inputSchema: writeInputSchema,
   execute: async ({ filePath, content }, { experimental_context }) => {
     const context = experimental_context as AgentContext | undefined;
-    const workingDirectory = context?.workingDirectory ?? process.cwd();
-    const sandbox = context?.sandbox ?? createLocalSandbox();
+    const sandbox = context?.sandbox ?? createLocalSandbox(process.cwd());
+    const workingDirectory = sandbox.workingDirectory;
 
     try {
       const absolutePath = path.isAbsolute(filePath)
@@ -137,8 +137,8 @@ EXAMPLES:
   inputSchema: editInputSchema,
   execute: async ({ filePath, oldString, newString, replaceAll = false }, { experimental_context }) => {
     const context = experimental_context as AgentContext | undefined;
-    const workingDirectory = context?.workingDirectory ?? process.cwd();
-    const sandbox = context?.sandbox ?? createLocalSandbox();
+    const sandbox = context?.sandbox ?? createLocalSandbox(process.cwd());
+    const workingDirectory = sandbox.workingDirectory;
 
     try {
       if (oldString === newString) {

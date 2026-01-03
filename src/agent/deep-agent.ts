@@ -90,7 +90,10 @@ export const deepAgent = new ToolLoopAgent({
     const todos = options?.todos ?? [];
     const scratchpad =
       options?.scratchpad ?? new Map<string, ScratchpadEntry>();
-    const sandbox = options?.sandbox ?? createLocalSandbox();
+
+    // Use provided sandbox, or create a local sandbox with the working directory
+    const sandbox =
+      options?.sandbox ?? createLocalSandbox(workingDirectory);
 
     const todosContext = formatTodosForContext(todos);
     const scratchpadContext = formatScratchpadForContext(scratchpad);
@@ -99,12 +102,12 @@ export const deepAgent = new ToolLoopAgent({
       ...settings,
       model,
       instructions: buildSystemPrompt({
-        cwd: workingDirectory,
+        cwd: sandbox.workingDirectory,
         customInstructions,
         todosContext,
         scratchpadContext,
       }),
-      experimental_context: { workingDirectory, sandbox },
+      experimental_context: { sandbox },
     };
   },
 });

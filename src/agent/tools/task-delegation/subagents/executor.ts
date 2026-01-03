@@ -69,11 +69,13 @@ export const executorSubagent = new ToolLoopAgent({
   },
   stopWhen: stepCountIs(30),
   callOptionsSchema,
-  prepareCall: ({ options, ...settings }) => ({
-    ...settings,
-    instructions: `${EXECUTOR_SYSTEM_PROMPT}
+  prepareCall: ({ options, ...settings }) => {
+    const sandbox = options.sandbox ?? createLocalSandbox(options.cwd);
+    return {
+      ...settings,
+      instructions: `${EXECUTOR_SYSTEM_PROMPT}
 
-Working directory: ${options.cwd}
+Working directory: ${sandbox.workingDirectory}
 
 ## Your Task
 ${options.task}
@@ -85,9 +87,7 @@ ${options.instructions}
 - You CANNOT ask questions - no one will respond
 - Complete the task fully before returning
 - Your final message MUST include both a **Summary** of what you did AND the **Answer** to the task`,
-    experimental_context: {
-      workingDirectory: options.cwd,
-      sandbox: options.sandbox ?? createLocalSandbox(),
-    },
-  }),
+      experimental_context: { sandbox },
+    };
+  },
 });

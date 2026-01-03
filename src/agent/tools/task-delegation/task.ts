@@ -83,8 +83,10 @@ NOTE: The executor subagent requires user approval before running because it has
   inputSchema: taskInputSchema,
   execute: async function* ({ subagentType, task, instructions, workingDirectory }, { experimental_context }) {
     const context = experimental_context as AgentContext | undefined;
-    const cwd = workingDirectory ?? context?.workingDirectory ?? process.cwd();
-    const sandbox = context?.sandbox ?? createLocalSandbox();
+    // Use provided workingDirectory, or get from sandbox, or default to cwd
+    const cwd = workingDirectory ?? context?.sandbox?.workingDirectory ?? process.cwd();
+    // Use existing sandbox if provided, or create a new one with the resolved cwd
+    const sandbox = context?.sandbox ?? createLocalSandbox(cwd);
 
     const subagent = subagentType === "explorer" ? explorerSubagent : executorSubagent;
 

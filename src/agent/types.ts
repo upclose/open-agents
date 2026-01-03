@@ -42,7 +42,6 @@ export interface MemoryStore {
 }
 
 export interface AgentContext {
-  workingDirectory: string;
   sandbox: Sandbox;
 }
 
