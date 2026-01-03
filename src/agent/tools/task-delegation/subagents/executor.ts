@@ -5,7 +5,7 @@ import { writeFileTool, editFileTool } from "../../file-system/write";
 import { grepTool } from "../../file-system/grep";
 import { globTool } from "../../file-system/glob";
 import { bashTool, commandNeedsApproval } from "../../file-system/bash";
-import { createLocalSandbox } from "../../../sandbox";
+import { createLocalSandbox, type Sandbox } from "../../../sandbox";
 
 const EXECUTOR_SYSTEM_PROMPT = `You are an executor agent - a fire-and-forget subagent that completes specific, well-defined implementation tasks autonomously.
 
@@ -47,6 +47,7 @@ const callOptionsSchema = z.object({
   task: z.string().describe("Short description of the task"),
   cwd: z.string().describe("Working directory for the subagent"),
   instructions: z.string().describe("Detailed instructions for the task"),
+  sandbox: z.custom<Sandbox>().optional().describe("Sandbox for file system and shell operations"),
 });
 
 export type ExecutorCallOptions = z.infer<typeof callOptionsSchema>;
@@ -86,7 +87,7 @@ ${options.instructions}
 - Your final message MUST include both a **Summary** of what you did AND the **Answer** to the task`,
     experimental_context: {
       workingDirectory: options.cwd,
-      sandbox: createLocalSandbox(),
+      sandbox: options.sandbox ?? createLocalSandbox(),
     },
   }),
 });

@@ -4,7 +4,7 @@ import { readFileTool } from "../../file-system/read";
 import { grepTool } from "../../file-system/grep";
 import { globTool } from "../../file-system/glob";
 import { bashTool, commandNeedsApproval } from "../../file-system/bash";
-import { createLocalSandbox } from "../../../sandbox";
+import { createLocalSandbox, type Sandbox } from "../../../sandbox";
 
 const EXPLORER_SYSTEM_PROMPT = `You are an explorer agent - a fast, read-only subagent specialized for exploring codebases.
 
@@ -58,6 +58,7 @@ const callOptionsSchema = z.object({
   task: z.string().describe("Short description of the exploration task"),
   cwd: z.string().describe("Working directory for the subagent"),
   instructions: z.string().describe("Detailed instructions for the exploration"),
+  sandbox: z.custom<Sandbox>().optional().describe("Sandbox for file system and shell operations"),
 });
 
 export type ExplorerCallOptions = z.infer<typeof callOptionsSchema>;
@@ -95,7 +96,7 @@ ${options.instructions}
 - Your final message MUST include both a **Summary** of what you searched AND the **Answer** to the task`,
     experimental_context: {
       workingDirectory: options.cwd,
-      sandbox: createLocalSandbox(),
+      sandbox: options.sandbox ?? createLocalSandbox(),
     },
   }),
 });

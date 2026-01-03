@@ -2,6 +2,8 @@ import { tool, readUIMessageStream } from "ai";
 import { z } from "zod";
 import { explorerSubagent } from "./subagents/explorer";
 import { executorSubagent } from "./subagents/executor";
+import type { AgentContext } from "../../types";
+import { createLocalSandbox } from "../../sandbox";
 
 const subagentTypeSchema = z.enum(["explorer", "executor"]);
 
@@ -79,14 +81,16 @@ IMPORTANT:
 
 NOTE: The executor subagent requires user approval before running because it has full write access.`,
   inputSchema: taskInputSchema,
-  execute: async function* ({ subagentType, task, instructions, workingDirectory }) {
-    const cwd = workingDirectory ?? process.cwd();
+  execute: async function* ({ subagentType, task, instructions, workingDirectory }, { experimental_context }) {
+    const context = experimental_context as AgentContext | undefined;
+    const cwd = workingDirectory ?? context?.workingDirectory ?? process.cwd();
+    const sandbox = context?.sandbox ?? createLocalSandbox();
 
     const subagent = subagentType === "explorer" ? explorerSubagent : executorSubagent;
 
     const result = await subagent.stream({
       prompt: "Complete this task and provide a summary of what you accomplished.",
-      options: { task, cwd, instructions },
+      options: { task, cwd, instructions, sandbox },
     });
 
     for await (const message of readUIMessageStream({

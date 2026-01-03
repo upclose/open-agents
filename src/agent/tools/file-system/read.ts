@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as path from "path";
 import type { AgentContext } from "../../types";
 import { isPathWithinDirectory } from "../../utils";
+import { createLocalSandbox } from "../../sandbox";
 
 export const readFileTool = tool({
   description: `Read a file from the filesystem.
@@ -40,9 +41,9 @@ EXAMPLES:
       .describe("Maximum number of lines to read. Default: 2000"),
   }),
   execute: async ({ filePath, offset = 1, limit = 2000 }, { experimental_context }) => {
-    const context = experimental_context as AgentContext;
+    const context = experimental_context as AgentContext | undefined;
     const workingDirectory = context?.workingDirectory ?? process.cwd();
-    const { sandbox } = context;
+    const sandbox = context?.sandbox ?? createLocalSandbox();
 
     try {
       if (filePath.startsWith("/scratchpad/")) {

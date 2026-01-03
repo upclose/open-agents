@@ -2,7 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import * as path from "path";
 import type { AgentContext } from "../../types";
-import type { Sandbox } from "../../sandbox";
+import { createLocalSandbox, type Sandbox } from "../../sandbox";
 import { isPathWithinDirectory } from "../../utils";
 
 interface GrepMatch {
@@ -129,9 +129,9 @@ EXAMPLES:
     glob,
     caseSensitive = true,
   }, { experimental_context }) => {
-    const context = experimental_context as AgentContext;
+    const context = experimental_context as AgentContext | undefined;
     const workingDirectory = context?.workingDirectory ?? process.cwd();
-    const { sandbox } = context;
+    const sandbox = context?.sandbox ?? createLocalSandbox();
 
     try {
       const flags = caseSensitive ? "g" : "gi";
