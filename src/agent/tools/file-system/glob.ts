@@ -2,7 +2,8 @@ import { tool } from "ai";
 import { z } from "zod";
 import * as path from "path";
 import type { Sandbox } from "../../sandbox";
-import { isPathWithinDirectory, getSandbox, sharedContext, pathMatchesGlob } from "../../utils";
+import { isPathWithinDirectory, getSandbox, pathMatchesGlob, getApprovalContext } from "../../utils";
+import type { ApprovalRule } from "../../types";
 
 interface FileInfo {
   path: string;
@@ -107,14 +108,18 @@ type GlobInput = z.infer<typeof globInputSchema>;
 /**
  * Check if a path matches any path-glob approval rules for glob operations.
  */
-function pathMatchesApprovalRule(searchPath: string): boolean {
+function pathMatchesApprovalRule(
+  searchPath: string,
+  workingDirectory: string,
+  approvalRules: ApprovalRule[]
+): boolean {
   const absolutePath = path.isAbsolute(searchPath)
     ? searchPath
-    : path.resolve(sharedContext.workingDirectory, searchPath);
+    : path.resolve(workingDirectory, searchPath);
 
-  for (const rule of sharedContext.approvalRules) {
+  for (const rule of approvalRules) {
     if (rule.type === "path-glob" && rule.tool === "glob") {
-      if (pathMatchesGlob(absolutePath, rule.glob, sharedContext.workingDirectory)) {
+      if (pathMatchesGlob(absolutePath, rule.glob, workingDirectory)) {
         return true;
       }
     }
@@ -122,35 +127,26 @@ function pathMatchesApprovalRule(searchPath: string): boolean {
   return false;
 }
 
-/**
- * Check if a glob operation needs approval based on the search path.
- * Returns true if the path is outside the working directory and no approval rule matches.
- */
-function pathNeedsApproval(args: GlobInput): boolean {
-  // If no path is provided, it defaults to working directory (no approval needed)
-  if (!args.path) {
-    return false;
-  }
-
-  const absolutePath = path.isAbsolute(args.path)
-    ? args.path
-    : path.resolve(sharedContext.workingDirectory, args.path);
-
-  // Check if within working directory - no approval needed
-  if (isPathWithinDirectory(absolutePath, sharedContext.workingDirectory)) {
-    return false;
-  }
-
-  // Outside working directory - check if a rule matches
-  if (pathMatchesApprovalRule(args.path)) {
-    return false;
-  }
-
-  return true;
-}
-
 export const globTool = () => tool({
-  needsApproval: pathNeedsApproval,
+  needsApproval: (args, { experimental_context }) => {
+    const ctx = getApprovalContext(experimental_context);
+    // If no path is provided, it defaults to working directory (no approval needed)
+    if (!args.path) {
+      return false;
+    }
+    const absolutePath = path.isAbsolute(args.path)
+      ? args.path
+      : path.resolve(ctx.workingDirectory, args.path);
+    // Check if within working directory - no approval needed
+    if (isPathWithinDirectory(absolutePath, ctx.workingDirectory)) {
+      return false;
+    }
+    // Outside working directory - check if a rule matches
+    if (pathMatchesApprovalRule(args.path, ctx.workingDirectory, ctx.approvalRules)) {
+      return false;
+    }
+    return true;
+  },
   description: `Find files matching a glob pattern.
 
 WHEN TO USE:
