@@ -1,7 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import * as path from "path";
-import { isPathWithinDirectory, getSandbox, sharedContext } from "../../utils";
+import { isPathWithinDirectory, getSandbox, getApprovalContext } from "../../utils";
+import type { ApprovalRule } from "../../types";
 
 const TIMEOUT_MS = 120_000;
 
@@ -24,22 +25,22 @@ interface ToolOptions {
  * Check if the cwd parameter is outside the working directory.
  * If cwd is not provided, it defaults to working directory (no approval needed for path).
  */
-function cwdIsOutsideWorkingDirectory(cwd: string | undefined): boolean {
+function cwdIsOutsideWorkingDirectory(cwd: string | undefined, workingDirectory: string): boolean {
   if (!cwd) {
     return false;
   }
   const absoluteCwd = path.isAbsolute(cwd)
     ? cwd
-    : path.resolve(sharedContext.workingDirectory, cwd);
-  return !isPathWithinDirectory(absoluteCwd, sharedContext.workingDirectory);
+    : path.resolve(workingDirectory, cwd);
+  return !isPathWithinDirectory(absoluteCwd, workingDirectory);
 }
 
 /**
  * Check if a command matches any command-prefix approval rules.
  */
-function commandMatchesApprovalRule(command: string): boolean {
+function commandMatchesApprovalRule(command: string, approvalRules: ApprovalRule[]): boolean {
   const trimmedCommand = command.trim();
-  for (const rule of sharedContext.approvalRules) {
+  for (const rule of approvalRules) {
     if (rule.type === "command-prefix" && rule.tool === "bash") {
       if (trimmedCommand.startsWith(rule.prefix)) {
         return true;
@@ -47,49 +48,6 @@ function commandMatchesApprovalRule(command: string): boolean {
     }
   }
   return false;
-}
-
-/**
- * Create a combined approval function for bash operations.
- * Always requires approval if cwd is outside working directory,
- * then checks command safety and user-provided option.
- * In background mode, auto-approve all operations (except outside working directory).
- * When autoApprove is "all", auto-approve bash commands within working directory.
- */
-function createBashApprovalFn(options?: ToolOptions): ApprovalFn {
-  return async (args) => {
-    // Always need approval if cwd is outside working directory (even in background mode)
-    if (cwdIsOutsideWorkingDirectory(args.cwd)) {
-      return true;
-    }
-
-    // In background mode, auto-approve all operations within working directory
-    if (sharedContext.mode === "background") {
-      return false;
-    }
-
-    // Auto-approve all bash commands when autoApprove is "all"
-    if (sharedContext.autoApprove === "all") {
-      return false;
-    }
-
-    // Check if command matches any saved approval rules
-    if (commandMatchesApprovalRule(args.command)) {
-      return false;
-    }
-
-    // Check command safety
-    if (commandNeedsApproval(args.command)) {
-      // If command is dangerous, check user's approval setting
-      if (typeof options?.needsApproval === "function") {
-        return options.needsApproval(args);
-      }
-      return options?.needsApproval ?? true;
-    }
-
-    // Command is safe - no approval needed
-    return false;
-  };
 }
 
 // Read-only commands that are safe to run without approval
@@ -164,7 +122,35 @@ export function commandNeedsApproval(command: string): boolean {
 }
 
 export const bashTool = (options?: ToolOptions) => tool({
-  needsApproval: createBashApprovalFn(options),
+  needsApproval: async (args, { experimental_context }) => {
+    const ctx = getApprovalContext(experimental_context);
+    // Always need approval if cwd is outside working directory (even in background mode)
+    if (cwdIsOutsideWorkingDirectory(args.cwd, ctx.workingDirectory)) {
+      return true;
+    }
+    // In background mode, auto-approve all operations within working directory
+    if (ctx.mode === "background") {
+      return false;
+    }
+    // Auto-approve all bash commands when autoApprove is "all"
+    if (ctx.autoApprove === "all") {
+      return false;
+    }
+    // Check if command matches any saved approval rules
+    if (commandMatchesApprovalRule(args.command, ctx.approvalRules)) {
+      return false;
+    }
+    // Check command safety
+    if (commandNeedsApproval(args.command)) {
+      // If command is dangerous, check user's approval setting
+      if (typeof options?.needsApproval === "function") {
+        return options.needsApproval(args);
+      }
+      return options?.needsApproval ?? true;
+    }
+    // Command is safe - no approval needed
+    return false;
+  },
   description: `Execute a bash command in the user's shell (non-interactive).
 
 WHEN TO USE:
