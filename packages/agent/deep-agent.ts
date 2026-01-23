@@ -113,10 +113,36 @@ export const deepAgent = new ToolLoopAgent({
     let planFilePath = context.planFilePath;
     let modeChanged = false;
 
-    // Check the last step for mode changes
+    // Check for mode changes in both steps (current request) and messages (approval responses)
+    // Steps contain tool results from this request's execution
+    // Messages contain tool results from approval responses (including denials)
+
+    // First, check for denied tools in messages (these override any successful execution)
+    const deniedTools = new Set<string>();
+    for (const message of messages) {
+      if (message.role === "tool" && Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (
+            part.type === "tool-result" &&
+            typeof part.output === "object" &&
+            part.output !== null &&
+            "type" in part.output &&
+            part.output.type === "execution-denied"
+          ) {
+            deniedTools.add(part.toolCallId);
+          }
+        }
+      }
+    }
+
+    // Check the last step for mode changes (skip if tool was denied)
     const lastStep = steps[steps.length - 1];
     if (lastStep?.toolResults) {
       for (const result of lastStep.toolResults) {
+        // Skip tools that were denied
+        if (deniedTools.has(result.toolCallId)) {
+          continue;
+        }
         if (result.toolName === "enter_plan_mode") {
           const output = extractEnterPlanModeOutput(result.output);
           if (output) {

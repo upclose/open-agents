@@ -565,13 +565,22 @@ function AppContent({ options }: AppProps) {
 
   // Detect agent mode changes from enter_plan_mode and exit_plan_mode tool results
   // Only check the last message for efficiency, and track processed tool calls
+  // Important: only process tools that completed successfully (output-available),
+  // not those that were denied (output-denied)
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.role !== "assistant") return;
 
     for (const part of lastMessage.parts) {
-      if (!isToolUIPart(part) || part.state !== "output-available") continue;
+      if (!isToolUIPart(part)) continue;
       if (processedPlanToolsRef.current.has(part.toolCallId)) continue;
+
+      // Only process successful tool completions, skip denied/pending/errored
+      if (part.state !== "output-available") continue;
+
+      // Also check that approval was actually granted (not denied)
+      const approval = (part as { approval?: { approved?: boolean } }).approval;
+      if (approval && approval.approved === false) continue;
 
       if (part.type === "tool-enter_plan_mode") {
         const output = extractEnterPlanModeOutput(part.output);
