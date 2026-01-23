@@ -2,6 +2,8 @@
 
 This file provides guidance for AI coding agents working in this repository.
 
+**This is a living document.** When you make a mistake or learn something new about this codebase, update this file to prevent the same mistake from happening again. Add lessons learned to the relevant section, or create a new "Lessons Learned" section at the bottom if needed.
+
 ## Commands
 
 ```bash
@@ -29,6 +31,19 @@ bun run format:check                       # Check formatting without writing
 bun test                        # Run all tests
 bun test path/to/file.test.ts   # Run single test file
 bun test --watch                # Watch mode
+```
+
+## Git Commands
+
+**Quote paths with special characters**: File paths containing brackets (like Next.js dynamic routes `[id]`, `[slug]`) are interpreted as glob patterns by zsh. Always quote these paths in git commands:
+
+```bash
+# Wrong - zsh interprets [id] as a glob pattern
+git add apps/web/app/tasks/[id]/page.tsx
+# Error: no matches found: apps/web/app/tasks/[id]/page.tsx
+
+# Correct - quote the path
+git add "apps/web/app/tasks/[id]/page.tsx"
 ```
 
 ## Architecture
