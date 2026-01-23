@@ -47,6 +47,7 @@ const callOptionsSchema = z.object({
   customInstructions: z.string().optional(),
   agentMode: agentModeSchema.optional(),
   planFilePath: z.string().optional(),
+  disablePlanning: z.boolean().optional(),
 });
 
 export type DeepAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -107,6 +108,7 @@ export const deepAgent = new ToolLoopAgent({
       agentMode: AgentMode;
       planFilePath: string | undefined;
       customInstructions: string | undefined;
+      disablePlanning: boolean;
     };
 
     let agentMode = context.agentMode;
@@ -236,13 +238,17 @@ export const deepAgent = new ToolLoopAgent({
     // Update active tools based on current mode
     // When forceExitPlanMode is true, explicitly include exit_plan_mode to ensure
     // it's available even if there's any timing issue with mode detection
+    // When disablePlanning is true, exclude enter_plan_mode from default tools
     const baseActiveTools =
       agentMode === "plan" ? PLAN_MODE_TOOLS : DEFAULT_MODE_TOOLS;
+    const filteredTools = context.disablePlanning
+      ? baseActiveTools.filter((t) => t !== "enter_plan_mode")
+      : baseActiveTools;
     const activeToolNames = forceExitPlanMode
-      ? ([...new Set([...baseActiveTools, "exit_plan_mode" as const])] as Array<
+      ? ([...new Set([...filteredTools, "exit_plan_mode" as const])] as Array<
           keyof typeof tools
         >)
-      : ([...baseActiveTools] as Array<keyof typeof tools>);
+      : ([...filteredTools] as Array<keyof typeof tools>);
 
     // Rebuild instructions if mode changed or if exit_plan_mode was denied
     let instructions: string | undefined;
@@ -316,6 +322,7 @@ Please revise your plan based on the user's feedback and call \`exit_plan_mode\`
     const sandbox = options.sandbox;
     const agentMode: AgentMode = options.agentMode ?? "default";
     const planFilePath = options.planFilePath;
+    const disablePlanning = options.disablePlanning ?? false;
 
     // Derive mode for system prompt (interactive vs background)
     const mode = approval.type === "background" ? "background" : "interactive";
@@ -348,6 +355,7 @@ Please revise your plan based on the user's feedback and call \`exit_plan_mode\`
         agentMode,
         planFilePath,
         customInstructions,
+        disablePlanning,
       },
     };
   },

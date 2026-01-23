@@ -112,6 +112,7 @@ export async function POST(req: Request) {
     options: {
       sandbox,
       model,
+      disablePlanning: true,
       // TODO: consider enabling approvals for non-cloud-sandbox environments
       approval: {
         type: "interactive",
