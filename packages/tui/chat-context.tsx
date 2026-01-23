@@ -337,19 +337,28 @@ export function ChatProvider({
     const nextIndex = (currentIndex + 1) % PERMISSION_MODES.length;
     const nextMode = PERMISSION_MODES[nextIndex] ?? "default";
 
+    // Update mode ref and state IMMEDIATELY (before any async work)
+    // This ensures the transport sees the new mode even if user sends a message right away
+    permissionModeRef.current = nextMode;
+    setPermissionModeState(nextMode);
+
     // If entering plan mode, create plan file using sandbox
     if (nextMode === "plan" && sandbox) {
       const planName = generatePlanName();
       const plansDir = join(sandbox.workingDirectory, ".open-harness", "plans");
+      const newPlanFilePath = join(plansDir, `${planName}.md`);
+
+      // Update planFilePath ref and state IMMEDIATELY (before mkdir)
+      planFilePathRef.current = newPlanFilePath;
+      setPlanFilePath(newPlanFilePath);
+
+      // Create the directory in the background - don't block mode switching
       await sandbox.mkdir(plansDir, { recursive: true });
-      const planFilePath = join(plansDir, `${planName}.md`);
-      setPlanFilePath(planFilePath);
     } else if (prev === "plan") {
       // Exiting plan mode, clear plan file path
+      planFilePathRef.current = null;
       setPlanFilePath(null);
     }
-
-    setPermissionModeState(nextMode);
   }, [sandbox]);
 
   const updateSettings = useCallback(

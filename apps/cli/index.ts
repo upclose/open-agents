@@ -180,6 +180,7 @@ async function main() {
         version: "0.1.0",
         model: defaultModelLabel,
       },
+      sandbox, // Pass sandbox at top level for plan mode file creation
       agentOptions: {
         sandbox,
         approval: {
