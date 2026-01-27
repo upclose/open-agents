@@ -721,6 +721,9 @@ function AppContent({ options }: AppProps) {
 
   const handleCommandSelect = useCallback(
     (action: SlashCommandAction) => {
+      // Skills are handled in InputBox by submitting as message, not here
+      if (typeof action === "object") return;
+
       switch (action) {
         case "open-model-select":
           openPanel({ type: "model-select" });

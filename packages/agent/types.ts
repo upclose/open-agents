@@ -29,9 +29,12 @@ export type ApprovalConfig =
   | { type: "background" }
   | { type: "delegated" };
 
+import type { SkillMetadata } from "./skills/types";
+
 export interface AgentContext {
   sandbox: Sandbox;
   approval: ApprovalConfig;
+  skills?: SkillMetadata[];
 }
 
 /**
@@ -56,6 +59,11 @@ export const approvalRuleSchema = z.discriminatedUnion("type", [
     type: z.literal("subagent-type"),
     tool: z.literal("task"),
     subagentType: z.enum(["explorer", "executor"]),
+  }),
+  z.object({
+    type: z.literal("skill"),
+    tool: z.literal("skill"),
+    skillName: z.string().min(1, "Skill name cannot be empty"),
   }),
 ]);
 

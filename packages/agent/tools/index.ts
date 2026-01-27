@@ -10,3 +10,4 @@ export {
   type AskUserQuestionToolUIPart,
   type AskUserQuestionInput,
 } from "./ask-user-question";
+export { skillTool, type SkillToolInput } from "./skill";

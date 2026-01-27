@@ -17,6 +17,7 @@ import {
   getCommandAction,
   type SlashCommandAction,
 } from "../lib/slash-commands";
+import { useChatContext } from "../chat-context";
 import {
   countLines,
   createPasteToken,
@@ -125,6 +126,8 @@ export const InputBox = memo(function InputBox({
   contextLimit = 0,
   pasteCollapseLineThreshold = 5,
 }: InputBoxProps) {
+  const { state } = useChatContext();
+  const skills = state.skills;
   const [value, setValue] = useState("");
   const [cursorPosition, setCursorPosition] = useState(0);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -219,7 +222,7 @@ export const InputBox = memo(function InputBox({
     if (command) {
       setCommandInfo(command);
       setMentionInfo(null);
-      setSuggestions(getCommandSuggestions(command.partialCommand));
+      setSuggestions(getCommandSuggestions(command.partialCommand, skills));
       setSelectedIndex(0);
       return;
     }
@@ -254,7 +257,7 @@ export const InputBox = memo(function InputBox({
         clearTimeout(debounceRef.current);
       }
     };
-  }, [value, cursorPosition]);
+  }, [value, cursorPosition, skills]);
 
   const pasteBlocksByToken = useMemo(() => {
     return new Map(pasteBlocks.map((block) => [block.token, block]));
@@ -382,15 +385,26 @@ export const InputBox = memo(function InputBox({
 
     // Handle slash command selection
     if (commandInfo) {
-      const action = getCommandAction(selected.value);
-      if (action && onCommandSelect) {
-        // Clear input and close suggestions
+      const action = getCommandAction(selected.value, skills);
+      if (action) {
+        // Handle skill selection by autocompleting (not submitting)
+        if (typeof action === "object" && action.type === "invoke-skill") {
+          const newValue = `/${action.skillName} `;
+          updateValue(newValue);
+          setCursorPosition(newValue.length);
+          setSuggestions([]);
+          setCommandInfo(null);
+          return true;
+        }
+
+        // Handle built-in command actions (execute immediately)
         updateValue("");
         setCursorPosition(0);
         setSuggestions([]);
         setCommandInfo(null);
-        // Execute the command action
-        onCommandSelect(action);
+        if (onCommandSelect) {
+          onCommandSelect(action);
+        }
         return true;
       }
       return false;
@@ -423,6 +437,7 @@ export const InputBox = memo(function InputBox({
     cursorPosition,
     updateValue,
     onCommandSelect,
+    skills,
   ]);
 
   const handleTab = useCallback(() => {

@@ -22,7 +22,7 @@ export function DefaultRenderer({
   return (
     <ToolLayout
       name={name}
-      summary={JSON.stringify(part.input).slice(0, 40)}
+      summary={part.input ? JSON.stringify(part.input).slice(0, 40) : "..."}
       output={
         part.state === "output-available" && <Text color="white">Done</Text>
       }

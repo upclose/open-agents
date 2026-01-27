@@ -34,3 +34,14 @@ export type {
   SubagentMessageMetadata,
   SubagentUIMessage,
 } from "./subagents/types";
+
+// Skills exports
+export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
+export { extractSkillBody, substituteArguments } from "./skills/loader";
+export type {
+  SkillMetadata,
+  SkillOptions,
+  SkillFrontmatter,
+} from "./skills/types";
+export { skillFrontmatterSchema, frontmatterToOptions } from "./skills/types";
+export type { SkillToolInput } from "./tools/skill";

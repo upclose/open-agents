@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { execSync } from "node:child_process";
-import { defaultModelLabel } from "@open-harness/agent";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { defaultModelLabel, discoverSkills } from "@open-harness/agent";
 import {
   createTUI,
   loadSettings,
@@ -153,6 +155,19 @@ async function main() {
     // Load agents.md files from the working directory hierarchy
     const agentsMd = await loadAgentsMd(workingDirectory);
 
+    // Discover skills from standard locations
+    // Base folder names that can contain skills (in both user home and project)
+    const skillBaseFolders = [".claude", ".agents"];
+    const skillDirs = [
+      // User-level skills (e.g., ~/.claude/skills, ~/.agents/skills)
+      ...skillBaseFolders.map((folder) => join(homedir(), folder, "skills")),
+      // Project-level skills (e.g., .claude/skills, .agents/skills)
+      ...skillBaseFolders.map((folder) =>
+        join(workingDirectory, folder, "skills"),
+      ),
+    ];
+    const skills = await discoverSkills(sandbox, skillDirs);
+
     // Load user settings and available models in parallel
     const [settings, availableModels] = await Promise.all([
       loadSettings(),
@@ -190,6 +205,7 @@ async function main() {
         ...(agentsMd?.content && {
           customInstructions: agentsMd.content,
         }),
+        ...(skills.length > 0 && { skills }),
       },
       initialSettings: settings,
       onSettingsChange: handleSettingsChange,

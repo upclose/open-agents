@@ -19,7 +19,7 @@ import type {
 } from "./types";
 import type { Settings } from "./lib/settings";
 import { AVAILABLE_MODELS, type ModelInfo } from "./lib/models";
-import { getContextLimit } from "@open-harness/agent";
+import { getContextLimit, type SkillMetadata } from "@open-harness/agent";
 
 export type PanelState =
   | { type: "none" }
@@ -40,6 +40,7 @@ type ChatState = {
   sessionId: string | null;
   projectPath: string | null;
   currentBranch: string;
+  skills: SkillMetadata[];
 };
 
 type ChatContextValue = {
@@ -276,6 +277,8 @@ export function ChatProvider({
     [transport],
   );
 
+  const skills = agentOptions.skills ?? [];
+
   const state: ChatState = useMemo(
     () => ({
       model: effectiveModel,
@@ -291,6 +294,7 @@ export function ChatProvider({
       sessionId,
       projectPath: projectPath ?? null,
       currentBranch,
+      skills,
     }),
     [
       effectiveModel,
@@ -306,6 +310,7 @@ export function ChatProvider({
       sessionId,
       projectPath,
       currentBranch,
+      skills,
     ],
   );
 

@@ -1,9 +1,11 @@
+import type { SkillMetadata } from "@open-harness/agent";
 import type { Suggestion } from "../components/suggestions";
 
 export type SlashCommandAction =
   | "open-model-select"
   | "open-resume"
-  | "new-chat";
+  | "new-chat"
+  | { type: "invoke-skill"; skillName: string };
 
 export type SlashCommand = {
   name: string;
@@ -60,27 +62,71 @@ export function extractSlashCommand(
 
 /**
  * Get command suggestions matching a partial command.
+ * Merges built-in commands with user-invocable skills, sorted alphabetically.
  */
-export function getCommandSuggestions(partialCommand: string): Suggestion[] {
+export function getCommandSuggestions(
+  partialCommand: string,
+  skills: SkillMetadata[] = [],
+): Suggestion[] {
   const query = partialCommand.toLowerCase();
 
-  return slashCommands
+  // Filter built-in commands
+  const commandSuggestions = slashCommands
     .filter((cmd) => cmd.name.toLowerCase().includes(query))
     .map((cmd) => ({
       value: cmd.name,
       display: `/${cmd.name}`,
       description: cmd.description,
     }));
+
+  // Filter user-invocable skills
+  const skillSuggestions = skills
+    .filter((skill) => skill.options.userInvocable !== false)
+    .filter((skill) => skill.name.toLowerCase().includes(query))
+    .map((skill) => {
+      const maxLen = 50;
+      const truncated =
+        skill.description.length > maxLen
+          ? skill.description.slice(0, maxLen - 1) + "…"
+          : skill.description;
+      return {
+        value: skill.name,
+        display: `/${skill.name}`,
+        description: `(skill) ${truncated}`,
+      };
+    });
+
+  // Merge and sort alphabetically by value
+  return [...commandSuggestions, ...skillSuggestions].sort((a, b) =>
+    a.value.localeCompare(b.value),
+  );
 }
 
 /**
  * Get the command action for a given command name.
+ * Checks built-in commands first, then falls back to skills.
  */
 export function getCommandAction(
   commandName: string,
+  skills: SkillMetadata[] = [],
 ): SlashCommandAction | null {
+  // Check built-in commands first
   const command = slashCommands.find(
     (cmd) => cmd.name.toLowerCase() === commandName.toLowerCase(),
   );
-  return command?.action ?? null;
+  if (command) {
+    return command.action;
+  }
+
+  // Check skills
+  const skill = skills.find(
+    (s) =>
+      s.name.toLowerCase() === commandName.toLowerCase() &&
+      s.options.userInvocable !== false,
+  );
+  if (skill) {
+    return { type: "invoke-skill", skillName: skill.name };
+  }
+
+  return null;
 }

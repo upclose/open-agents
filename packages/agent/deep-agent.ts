@@ -17,7 +17,9 @@ import {
   bashTool,
   taskTool,
   askUserQuestionTool,
+  skillTool,
 } from "./tools";
+import type { SkillMetadata } from "./skills/types";
 import { buildSystemPrompt } from "./system-prompt";
 import type { TodoItem, ApprovalConfig } from "./types";
 import { approvalRuleSchema } from "./types";
@@ -39,6 +41,7 @@ const callOptionsSchema = z.object({
   approval: approvalConfigSchema,
   model: z.custom<LanguageModel>().optional(),
   customInstructions: z.string().optional(),
+  skills: z.custom<SkillMetadata[]>().optional(),
 });
 
 export type DeepAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -56,6 +59,7 @@ const tools = {
   bash: bashTool(),
   task: taskTool,
   ask_user_question: askUserQuestionTool,
+  skill: skillTool,
 } satisfies ToolSet;
 
 export const deepAgent = new ToolLoopAgent({
@@ -80,6 +84,7 @@ export const deepAgent = new ToolLoopAgent({
     const callModel = options.model ?? model;
     const customInstructions = options.customInstructions;
     const sandbox = options.sandbox;
+    const skills = options.skills ?? [];
 
     // Derive mode for system prompt (interactive vs background)
     const mode = approval.type === "background" ? "background" : "interactive";
@@ -90,6 +95,7 @@ export const deepAgent = new ToolLoopAgent({
       currentBranch: sandbox.currentBranch,
       customInstructions,
       environmentDetails: sandbox.environmentDetails,
+      skills,
     });
 
     return {
@@ -100,7 +106,7 @@ export const deepAgent = new ToolLoopAgent({
         model: callModel,
       }),
       instructions,
-      experimental_context: { sandbox, approval },
+      experimental_context: { sandbox, approval, skills },
     };
   },
 });

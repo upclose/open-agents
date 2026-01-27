@@ -148,6 +148,17 @@ export function getToolApprovalInfo(
       };
     }
 
+    case "tool-skill": {
+      const skillName = String(part.input?.skill ?? "");
+      return {
+        toolType: `Use skill "${skillName}"`,
+        toolCommand: skillName,
+        toolDescription:
+          "Claude may use instructions, code, or files from this skill.",
+        dontAskAgainPattern: `${skillName} skill`,
+      };
+    }
+
     default: {
       const toolName = getToolName(part);
       return {
@@ -242,6 +253,17 @@ export function inferApprovalRule(
         type: "path-glob",
         tool: "grep",
         glob: getPathGlob(searchPath, cwd),
+      };
+    }
+
+    case "tool-skill": {
+      const skillName = String(part.input?.skill ?? "");
+      if (!skillName) return null;
+
+      return {
+        type: "skill",
+        tool: "skill",
+        skillName,
       };
     }
 

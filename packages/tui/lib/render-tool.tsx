@@ -91,6 +91,8 @@ export function renderToolPart(
           isExpanded={isExpanded}
         />
       );
+    case "tool-skill":
+      return <DefaultRenderer part={part} state={state} />;
     case "dynamic-tool":
       return <DefaultRenderer part={part} state={state} />;
   }
