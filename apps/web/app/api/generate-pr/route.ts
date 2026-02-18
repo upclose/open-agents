@@ -592,6 +592,14 @@ Respond with ONLY the commit message, nothing else.`,
       let errorMessage = "Failed to push branch.";
       let isPermissionError = isPermissionPushError(pushOutput);
 
+      // Vercel sandboxes can return empty output on push failure even when
+      // the actual error is a permission denial (exitCode 128 with no stderr).
+      // Treat empty-output failures as potential permission errors so fallback
+      // paths (user token, fork) are still attempted.
+      if (!isPermissionError && !pushOutput && pushResult.exitCode === 128) {
+        isPermissionError = true;
+      }
+
       if (
         repoTokenResult?.type === "installation" &&
         sessionRecord.repoOwner &&
@@ -626,6 +634,13 @@ Respond with ONLY the commit message, nothing else.`,
                 `${pushResult.stdout}\n${pushResult.stderr ?? ""}`.trim();
               redactedPushOutput = redactGitHubToken(pushOutput);
               isPermissionError = isPermissionPushError(pushOutput);
+              if (
+                !isPermissionError &&
+                !pushOutput &&
+                pushResult.exitCode === 128
+              ) {
+                isPermissionError = true;
+              }
               console.log(
                 `[generate-pr] Push to origin with user token also failed (exitCode=${pushResult.exitCode}, output=${redactedPushOutput.slice(0, 200) || "none"})`,
               );
