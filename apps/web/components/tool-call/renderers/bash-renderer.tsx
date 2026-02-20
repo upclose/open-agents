@@ -33,7 +33,8 @@ export function BashRenderer({
   const hasMoreLines = allLines.length > 3;
 
   // Determine if we have content worth expanding
-  const hasExpandableContent = command.length > 60 || hasMoreLines || cwd;
+  const hasExpandableContent =
+    command.length > 60 || hasMoreLines || cwd || isDetached;
 
   const dotColor = state.denied
     ? "bg-red-500"
