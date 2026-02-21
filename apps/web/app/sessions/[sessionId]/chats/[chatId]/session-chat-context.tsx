@@ -18,9 +18,11 @@ import type { ReconnectResponse } from "@/app/api/sandbox/reconnect/route";
 import type { SandboxStatusResponse } from "@/app/api/sandbox/status/route";
 import type { DiffResponse } from "@/app/api/sessions/[sessionId]/diff/route";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
+import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 import type { WebAgentUIMessage } from "@/app/types";
 import { useSessionDiff } from "@/hooks/use-session-diff";
 import { useSessionFiles } from "@/hooks/use-session-files";
+import { useSessionSkills } from "@/hooks/use-session-skills";
 import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
 import {
   abortChatInstanceTransport,
@@ -135,6 +137,14 @@ type SessionChatContextValue = {
   filesError: string | null;
   /** Trigger a files refresh */
   refreshFiles: () => Promise<void>;
+  /** Skill suggestions from sandbox */
+  skills: SkillSuggestion[] | null;
+  /** Whether skills are loading */
+  skillsLoading: boolean;
+  /** Skills error message */
+  skillsError: string | null;
+  /** Trigger a skills refresh */
+  refreshSkills: () => Promise<void>;
   /** Update session snapshot info after saving */
   updateSessionSnapshot: (snapshotUrl: string, snapshotCreatedAt: Date) => void;
   /** Preferred sandbox mode to request when creating a new sandbox */
@@ -698,6 +708,13 @@ export function SessionChatProvider({
     refresh: refreshFilesSWR,
   } = useSessionFiles(sessionRecord.id, sandboxConnected);
 
+  const {
+    skills,
+    isLoading: skillsLoading,
+    error: skillsError,
+    refresh: refreshSkillsSWR,
+  } = useSessionSkills(sessionRecord.id, sandboxConnected);
+
   // Update local session state when fresh diff data is received from the live sandbox.
   // This ensures cachedDiff is available when the sandbox disconnects.
   useEffect(() => {
@@ -717,6 +734,10 @@ export function SessionChatProvider({
   const refreshFiles = useCallback(async () => {
     await refreshFilesSWR();
   }, [refreshFilesSWR]);
+
+  const refreshSkills = useCallback(async () => {
+    await refreshSkillsSWR();
+  }, [refreshSkillsSWR]);
 
   const archiveSession = useCallback(async () => {
     const previousSession = sessionRecord;
@@ -883,6 +904,10 @@ export function SessionChatProvider({
       filesLoading,
       filesError,
       refreshFiles,
+      skills,
+      skillsLoading,
+      skillsError,
+      refreshSkills,
       updateSessionSnapshot,
       preferredSandboxType,
       supportsDiff,
@@ -921,6 +946,10 @@ export function SessionChatProvider({
       filesLoading,
       filesError,
       refreshFiles,
+      skills,
+      skillsLoading,
+      skillsError,
+      refreshSkills,
       updateSessionSnapshot,
       preferredSandboxType,
       supportsDiff,
