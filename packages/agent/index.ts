@@ -5,6 +5,17 @@ export {
   MODEL_CONTEXT_LIMITS,
 } from "./context-management/model-limits";
 export { type GatewayConfig, type GatewayOptions, gateway } from "./models";
+export type {
+  DurableOpenHarnessAgent,
+  DurableOpenHarnessAgentCallOptions,
+} from "./durable-open-harness-agent";
+export {
+  durableCallOptionsSchema,
+  durableDefaultModel,
+  durableDefaultModelLabel,
+  durableOpenHarnessAgent,
+  prepareDurableCall,
+} from "./durable-open-harness-agent";
 export type { OpenHarnessAgentCallOptions } from "./open-harness-agent";
 export {
   defaultModel,

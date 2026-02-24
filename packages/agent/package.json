@@ -15,7 +15,9 @@
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
     "@open-harness/sandbox": "workspace:*",
+    "@workflow/ai": "catalog:",
     "ai": "catalog:",
+    "workflow": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
