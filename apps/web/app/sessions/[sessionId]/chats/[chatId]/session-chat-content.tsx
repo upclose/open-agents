@@ -70,7 +70,9 @@ import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import {
+  computeStallRecoveryDelay,
   isChatInFlight as isChatInFlightStatus,
+  shouldAttemptStreamRecovery,
   shouldRefreshAfterReadyTransition,
   shouldShowThinkingIndicator,
 } from "@/lib/chat-streaming-state";
@@ -105,9 +107,6 @@ const Streamdown = dynamic(
   () => import("streamdown").then((m) => m.Streamdown),
   { ssr: false },
 );
-
-const STREAM_RECOVERY_STALL_MS = 4_000;
-const STREAM_RECOVERY_MIN_INTERVAL_MS = 8_000;
 
 const emptySubscribe = () => () => {};
 function useHasMounted() {
@@ -953,42 +952,16 @@ export function SessionChatContent() {
   // the stable wrapper below keeps a constant identity for effects.
   const maybeRecoverStreamRef = useRef(() => {});
   maybeRecoverStreamRef.current = () => {
-    const now = Date.now();
-    if (
-      now - lastStreamRecoveryAtRef.current <
-      STREAM_RECOVERY_MIN_INTERVAL_MS
-    ) {
-      return;
-    }
+    const decision = shouldAttemptStreamRecovery({
+      status,
+      hasAssistantRenderableContent,
+      now: Date.now(),
+      lastRecoveryAt: lastStreamRecoveryAtRef.current,
+      streamingStartedAt: streamingStartedAtRef.current,
+    });
+    if (decision === "skip") return;
 
-    if (status === "error") {
-      lastStreamRecoveryAtRef.current = now;
-      retryChatStream({ auto: true });
-      return;
-    }
-
-    // Only recover when we're actively streaming but no content appears.
-    // During "submitted" the POST is still in flight — the server may be
-    // doing expensive setup (connecting sandbox, discovering skills, etc.)
-    // which can legitimately take 10+ seconds. Aborting it prematurely
-    // kills the connection and the subsequent resumeStream fails because
-    // activeStreamId hasn't been set yet (the server hasn't started
-    // streaming). The user then sees no response until a manual refresh.
-    if (status !== "streaming" || hasAssistantRenderableContent) {
-      return;
-    }
-
-    // Measure from when streaming actually started, not from when the POST
-    // was sent. Server setup time (sandbox connection, skill discovery) can
-    // be 10+ seconds for the first request, and even for subsequent
-    // requests the model may take several seconds to start producing
-    // visible output (extended thinking, tool planning, etc.).
-    const startedAt = streamingStartedAtRef.current;
-    if (startedAt === null || now - startedAt < STREAM_RECOVERY_STALL_MS) {
-      return;
-    }
-
-    lastStreamRecoveryAtRef.current = now;
+    lastStreamRecoveryAtRef.current = Date.now();
     retryChatStream({ auto: true });
   };
 
@@ -1041,16 +1014,9 @@ export function SessionChatContent() {
     };
   }, [maybeRecoverStream]);
 
-  // Schedule a stall-recovery timer only while actively streaming. During
-  // "submitted" the POST is still waiting for the server to finish setup
-  // and start producing data — aborting it would be premature.
-  // The timer measures from when streaming actually started (not from when
-  // the POST was sent) so that slow server setup doesn't eat into the
-  // grace period for the model to produce its first visible output.
+  // Schedule a stall-recovery timer only while actively streaming without
+  // visible content. The delay is computed from when streaming started.
   useEffect(() => {
-    if (status !== "streaming" || hasAssistantRenderableContent) {
-      return;
-    }
     if (
       typeof document !== "undefined" &&
       document.visibilityState !== "visible"
@@ -1058,9 +1024,14 @@ export function SessionChatContent() {
       return;
     }
 
-    const startedAt = streamingStartedAtRef.current;
-    const elapsed = startedAt === null ? 0 : Date.now() - startedAt;
-    const waitMs = Math.max(0, STREAM_RECOVERY_STALL_MS - elapsed);
+    const waitMs = computeStallRecoveryDelay({
+      status,
+      hasAssistantRenderableContent,
+      streamingStartedAt: streamingStartedAtRef.current,
+      now: Date.now(),
+    });
+    if (waitMs === null) return;
+
     const timeout = setTimeout(() => {
       maybeRecoverStream();
     }, waitMs);
