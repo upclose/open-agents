@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   collectTaskToolUsageEvents,
+  createSandboxConfigFromInstance,
   discoverSkills,
   gateway,
   sumLanguageModelUsage,
@@ -10,7 +11,6 @@ import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import {
   convertToModelMessages,
   type GatewayModelId,
-  type LanguageModel,
   type LanguageModelUsage,
 } from "ai";
 import { nanoid } from "nanoid";
@@ -312,25 +312,24 @@ export async function POST(req: Request) {
 
   // Resolve model from chat's modelId, falling back to default if invalid
   const modelId = chat.modelId ?? DEFAULT_MODEL_ID;
-  let model;
+  let resolvedModelId = modelId;
   try {
-    model = gateway(modelId as GatewayModelId);
+    gateway(modelId as GatewayModelId);
   } catch (error) {
     console.error(
       `Invalid model ID "${modelId}", falling back to default:`,
       error,
     );
-    model = gateway(DEFAULT_MODEL_ID as GatewayModelId);
+    resolvedModelId = DEFAULT_MODEL_ID;
   }
 
   // Resolve subagent model from user preferences (if configured)
-  let subagentModel: LanguageModel | undefined;
+  let subagentModelId: string | undefined;
   try {
     const preferences = await getUserPreferences(session.user.id);
     if (preferences.defaultSubagentModelId) {
-      subagentModel = gateway(
-        preferences.defaultSubagentModelId as GatewayModelId,
-      );
+      gateway(preferences.defaultSubagentModelId as GatewayModelId);
+      subagentModelId = preferences.defaultSubagentModelId;
     }
   } catch (error) {
     console.error("Failed to resolve subagent model preference:", error);
@@ -384,9 +383,11 @@ export async function POST(req: Request) {
     result = await webAgent.stream({
       messages: modelMessages,
       options: {
-        sandbox,
-        model,
-        subagentModel,
+        sandboxConfig: createSandboxConfigFromInstance(sandbox),
+        modelConfig: { modelId: resolvedModelId },
+        ...(subagentModelId && {
+          subagentModelConfig: { modelId: subagentModelId },
+        }),
         // TODO: consider enabling approvals for non-cloud-sandbox environments
         approval: {
           type: "interactive",
@@ -561,7 +562,7 @@ export async function POST(req: Request) {
 
         const postUsage = (
           usage: LanguageModelUsage,
-          usageModel: LanguageModel | string,
+          usageModel: string,
           agentType: "main" | "subagent",
           messages: WebAgentUIMessage[] = [],
         ) => {
@@ -579,7 +580,9 @@ export async function POST(req: Request) {
         };
 
         if (totalMessageUsage) {
-          postUsage(totalMessageUsage, model, "main", [responseMessage]);
+          postUsage(totalMessageUsage, resolvedModelId, "main", [
+            responseMessage,
+          ]);
         }
 
         const subagentUsageEvents = collectTaskToolUsageEvents(responseMessage);
@@ -587,8 +590,7 @@ export async function POST(req: Request) {
           return;
         }
 
-        const defaultModelId =
-          typeof model === "string" ? model : model.modelId;
+        const defaultModelId = resolvedModelId;
         const subagentUsageByModel = new Map<string, LanguageModelUsage>();
         for (const event of subagentUsageEvents) {
           const eventModelId = event.modelId ?? defaultModelId;

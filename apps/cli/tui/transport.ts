@@ -12,7 +12,6 @@ import {
   pruneMessages,
   smoothStream,
 } from "ai";
-import { getModelById } from "./lib/models";
 import { createSession, saveSession } from "./lib/session-storage";
 import type { Settings } from "./lib/settings";
 import type {
@@ -80,7 +79,13 @@ export function createAgentTransport({
       const sessionRules = getApprovalRules ? getApprovalRules() : [];
       const settings = getSettings?.() ?? {};
       const modelId = settings.modelId ?? defaultModelLabel;
-      const model = getModelById(modelId, { devtools, gatewayConfig });
+      const modelConfig = {
+        modelId,
+        gatewayOptions: {
+          devtools,
+          ...(gatewayConfig && { config: gatewayConfig }),
+        },
+      };
 
       // Build the approval config based on the current base config type
       const baseApproval = agentOptions.approval;
@@ -103,7 +108,7 @@ export function createAgentTransport({
 
       const result = await agent.stream({
         messages: prunedMessages,
-        options: { ...agentOptions, ...(model && { model }), approval },
+        options: { ...agentOptions, modelConfig, approval },
         abortSignal: abortSignal ?? undefined,
         experimental_transform: smoothStream({ chunking: "line" }),
       });

@@ -3,7 +3,11 @@
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { defaultModelLabel, discoverSkills } from "@open-harness/agent";
+import {
+  createSandboxConfigFromInstance,
+  defaultModelLabel,
+  discoverSkills,
+} from "@open-harness/agent";
 import { loadAgentsMd } from "./agents-md";
 import { handleAuthCommand } from "./auth/commands";
 import { getWebAppUrl } from "./auth/config";
@@ -254,7 +258,7 @@ async function main() {
         model: defaultModelLabel,
       },
       agentOptions: {
-        sandbox,
+        sandboxConfig: createSandboxConfigFromInstance(sandbox),
         approval: {
           type: "interactive",
           autoApprove: "off",

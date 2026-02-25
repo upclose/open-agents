@@ -1,15 +1,18 @@
-import type { Sandbox } from "@open-harness/sandbox";
 import {
-  gateway,
-  type LanguageModel,
   stepCountIs,
   ToolLoopAgent,
   type ToolSet,
   type TypedToolResult,
 } from "ai";
-import { z } from "zod";
-import { addCacheControl, compactContext } from "./context-management";
-import type { SkillMetadata } from "./skills/types";
+import {
+  addCacheControl,
+  compactContext,
+  getModelLabel,
+} from "./context-management";
+import { callOptionsSchema } from "./call-options/schema";
+import { createModelFromConfig } from "./call-options/model-config";
+import { createSandboxFromConfig } from "./call-options/sandbox-config";
+import { gateway } from "./models";
 import { buildSystemPrompt } from "./system-prompt";
 import {
   askUserQuestionTool,
@@ -25,31 +28,6 @@ import {
   writeFileTool,
 } from "./tools";
 import type { ApprovalConfig, TodoItem } from "./types";
-import { approvalRuleSchema } from "./types";
-
-const approvalConfigSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("interactive"),
-    autoApprove: z.enum(["off", "edits", "all"]).default("off"),
-    sessionRules: z.array(approvalRuleSchema).default([]),
-  }),
-  z.object({ type: z.literal("background") }),
-  z.object({ type: z.literal("delegated") }),
-]);
-
-const callOptionsSchema = z.object({
-  sandbox: z.custom<Sandbox>(),
-  approval: approvalConfigSchema,
-  model: z.custom<LanguageModel>().optional(),
-  subagentModel: z.custom<LanguageModel>().optional(),
-  customInstructions: z.string().optional(),
-  skills: z.custom<SkillMetadata[]>().optional(),
-});
-
-export type OpenHarnessAgentCallOptions = z.infer<typeof callOptionsSchema>;
-
-export const defaultModel = gateway("anthropic/claude-haiku-4.5");
-export const defaultModelLabel = defaultModel.modelId;
 
 const tools = {
   todo_write: todoWriteTool,
@@ -65,6 +43,9 @@ const tools = {
   web_fetch: webFetchTool,
 } satisfies ToolSet;
 
+export const defaultModel = gateway("anthropic/claude-haiku-4.5");
+export const defaultModelLabel = getModelLabel(defaultModel);
+
 export const openHarnessAgent = new ToolLoopAgent({
   model: defaultModel,
   instructions: buildSystemPrompt({}),
@@ -77,17 +58,18 @@ export const openHarnessAgent = new ToolLoopAgent({
       model,
     }),
   }),
-  prepareCall: ({ options, model, ...settings }) => {
+  prepareCall: async ({ options, model, ...settings }) => {
     if (!options) {
       throw new Error(
-        "Open Harness agent requires call options with sandbox and approval config.",
+        "Open Harness agent requires call options with sandbox config and approval config.",
       );
     }
+
     const approval: ApprovalConfig = options.approval;
-    const callModel = options.model ?? model;
-    const subagentModel = options.subagentModel;
+    const callModel = createModelFromConfig(options.modelConfig) ?? model;
+    const subagentModel = createModelFromConfig(options.subagentModelConfig);
     const customInstructions = options.customInstructions;
-    const sandbox = options.sandbox;
+    const sandbox = await createSandboxFromConfig(options.sandboxConfig);
     const skills = options.skills ?? [];
 
     // Derive mode for system prompt (interactive vs background)
