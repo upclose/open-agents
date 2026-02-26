@@ -83,7 +83,7 @@ export function EditRenderer({
         )}
 
       {showDiff && !mergedState.approvalRequested && !mergedState.denied && (
-        <div className="ml-5 mt-2 max-h-40 overflow-hidden">
+        <div className="ml-5 mt-2 max-h-96 overflow-auto">
           <MultiFileDiff
             oldFile={{ name: rawFilePath, contents: oldString }}
             newFile={{ name: rawFilePath, contents: newString }}
