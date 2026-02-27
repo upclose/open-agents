@@ -15,8 +15,6 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import type { SandboxType } from "@/components/sandbox-selector-compact";
-import { SessionStarter } from "@/components/session-starter";
 import { UserAvatarDropdown } from "@/components/user-avatar-dropdown";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,8 +25,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useCliTokens } from "@/hooks/use-cli-tokens";
 import { useInbox } from "@/hooks/use-inbox";
+import { useUserPreferences } from "@/hooks/use-user-preferences";
 import type {
   InboxActionType,
   InboxEventType,
@@ -80,6 +80,45 @@ function isQuickReviewEvent(eventType: InboxEventType): boolean {
   return (
     eventType === "review_ready" || eventType === "run_completed_no_output"
   );
+}
+
+function parseRepoTag(input: string): { owner: string; repo: string } | null {
+  const trimmedInput = input.trim();
+  if (!trimmedInput) {
+    return null;
+  }
+
+  const githubUrlMatch = trimmedInput.match(
+    /^https?:\/\/github\.com\/([^/]+)\/([^/?#]+)$/i,
+  );
+
+  const candidate = githubUrlMatch
+    ? `${githubUrlMatch[1]}/${githubUrlMatch[2]}`
+    : trimmedInput;
+
+  const [owner, repo] = candidate.split("/");
+
+  if (!owner || !repo || candidate.split("/").length !== 2) {
+    return null;
+  }
+
+  const validPart = /^[A-Za-z0-9_.-]+$/;
+  if (!validPart.test(owner) || !validPart.test(repo)) {
+    return null;
+  }
+
+  return { owner, repo };
+}
+
+function deriveSessionTitle(task: string): string {
+  const normalized = task.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "New task";
+  }
+
+  return normalized.length > 72
+    ? `${normalized.slice(0, 71).trimEnd()}…`
+    : normalized;
 }
 
 function getEventIcon(eventType: InboxEventType) {
@@ -161,11 +200,18 @@ export function InboxPage({ lastRepo }: InboxPageProps) {
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [quickTask, setQuickTask] = useState("");
+  const [quickRepoTag, setQuickRepoTag] = useState(
+    lastRepo ? `${lastRepo.owner}/${lastRepo.repo}` : "",
+  );
+  const [quickBranch, setQuickBranch] = useState("");
+  const [useAutoBranch, setUseAutoBranch] = useState(true);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [selectedReviewItem, setSelectedReviewItem] =
     useState<InboxItem | null>(null);
   const includeUpdates = activeFilter === "updates";
 
+  const { preferences } = useUserPreferences();
   const { data, loading, error, refresh, runAction } = useInbox({
     q: query,
     includeUpdates,
@@ -257,44 +303,112 @@ export function InboxPage({ lastRepo }: InboxPageProps) {
     };
   }, [data, groups]);
 
-  const handleCreateSession = async (input: {
-    repoOwner?: string;
-    repoName?: string;
-    branch?: string;
-    cloneUrl?: string;
-    isNewBranch: boolean;
-    sandboxType: SandboxType;
-  }) => {
+  const handleDispatchTask = async () => {
+    const taskText = quickTask.trim();
+    if (!taskText) {
+      setCreateError("Add a task before dispatching.");
+      return;
+    }
+
+    const parsedRepo = parseRepoTag(quickRepoTag);
+    const hasRepoInput = quickRepoTag.trim().length > 0;
+
+    if (hasRepoInput && !parsedRepo) {
+      setCreateError("Repo tag must look like owner/repo.");
+      return;
+    }
+
     setIsCreating(true);
     setCreateError(null);
 
+    const sandboxType = preferences?.defaultSandboxType ?? "hybrid";
+    const isNewBranch = parsedRepo ? useAutoBranch : false;
+    const branch =
+      parsedRepo && !useAutoBranch && quickBranch.trim().length > 0
+        ? quickBranch.trim()
+        : undefined;
+    const cloneUrl = parsedRepo
+      ? `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}`
+      : undefined;
+
     try {
-      const response = await fetch("/api/sessions", {
+      const createResponse = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repoOwner: input.repoOwner,
-          repoName: input.repoName,
-          branch: input.branch,
-          cloneUrl: input.cloneUrl,
-          isNewBranch: input.isNewBranch,
-          sandboxType: input.sandboxType,
+          title: deriveSessionTitle(taskText),
+          repoOwner: parsedRepo?.owner,
+          repoName: parsedRepo?.repo,
+          branch,
+          cloneUrl,
+          isNewBranch,
+          sandboxType,
         }),
       });
 
-      const payload = (await response.json()) as { error?: string };
+      const createPayload = (await createResponse.json()) as {
+        session?: { id: string; branch: string | null };
+        chat?: { id: string };
+        error?: string;
+      };
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Failed to create session");
+      if (!createResponse.ok || !createPayload.session || !createPayload.chat) {
+        throw new Error(createPayload.error ?? "Failed to create task session");
       }
 
+      const sandboxResponse = await fetch("/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: createPayload.session.id,
+          repoUrl: cloneUrl,
+          branch: createPayload.session.branch ?? branch,
+          isNewBranch,
+          sandboxType,
+        }),
+      });
+
+      const sandboxPayload = (await sandboxResponse.json()) as {
+        error?: string;
+      };
+
+      if (!sandboxResponse.ok) {
+        throw new Error(sandboxPayload.error ?? "Failed to prepare sandbox");
+      }
+
+      const chatResponse = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: createPayload.session.id,
+          chatId: createPayload.chat.id,
+          messages: [
+            {
+              id: crypto.randomUUID(),
+              role: "user",
+              parts: [{ type: "text", text: taskText }],
+            },
+          ],
+        }),
+      });
+
+      if (!chatResponse.ok) {
+        const chatPayload = (await chatResponse.json()) as { error?: string };
+        throw new Error(chatPayload.error ?? "Failed to start task");
+      }
+
+      setQuickTask("");
+      setQuickBranch("");
       setIsTaskDialogOpen(false);
       await refresh();
-    } catch (createSessionError) {
+      setTimeout(() => {
+        void refresh();
+      }, 1500);
+    } catch (dispatchError) {
       setCreateError(
-        createSessionError instanceof Error
-          ? createSessionError.message
-          : "Failed to create session",
+        dispatchError instanceof Error
+          ? dispatchError.message
+          : "Failed to dispatch task",
       );
     } finally {
       setIsCreating(false);
@@ -337,29 +451,130 @@ export function InboxPage({ lastRepo }: InboxPageProps) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
+            <Dialog
+              open={isTaskDialogOpen}
+              onOpenChange={(isOpen) => {
+                setIsTaskDialogOpen(isOpen);
+                if (isOpen) {
+                  setCreateError(null);
+                }
+              }}
+            >
               <Button onClick={() => setIsTaskDialogOpen(true)}>
                 <Plus className="h-4 w-4" />
                 New Task
               </Button>
-              <DialogContent className="max-w-2xl border-border/60 bg-neutral-950 p-0 sm:max-w-2xl">
-                <DialogHeader className="px-6 pt-6">
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
                   <DialogTitle>Dispatch a new task</DialogTitle>
                   <DialogDescription>
-                    Start a session and return to Inbox while it runs.
+                    Add the task, optionally tag a repo, and let it run while
+                    you stay in Inbox.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="px-6 pb-6">
-                  <SessionStarter
-                    onSubmit={handleCreateSession}
-                    isLoading={isCreating}
-                    lastRepo={lastRepo}
-                  />
-                  {createError ? (
-                    <p className="mt-3 text-sm text-destructive">
-                      {createError}
-                    </p>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="quick-task-input"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Task
+                    </label>
+                    <Textarea
+                      id="quick-task-input"
+                      value={quickTask}
+                      onChange={(event) => setQuickTask(event.target.value)}
+                      placeholder="Implement X, then run lint and summarize the diff"
+                      rows={4}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label
+                        htmlFor="quick-task-repo"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        Repo tag (optional)
+                      </label>
+                      {lastRepo ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setQuickRepoTag(
+                              `${lastRepo.owner}/${lastRepo.repo}`,
+                            )
+                          }
+                          className="text-xs text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+                        >
+                          Use last repo
+                        </button>
+                      ) : null}
+                    </div>
+                    <Input
+                      id="quick-task-repo"
+                      value={quickRepoTag}
+                      onChange={(event) => setQuickRepoTag(event.target.value)}
+                      placeholder="owner/repo"
+                    />
+                  </div>
+
+                  {quickRepoTag.trim().length > 0 ? (
+                    <div className="space-y-3 rounded-md border border-border/70 p-3">
+                      <label className="flex items-center gap-2 text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={useAutoBranch}
+                          onChange={(event) =>
+                            setUseAutoBranch(event.target.checked)
+                          }
+                        />
+                        Auto-generate branch
+                      </label>
+
+                      {!useAutoBranch ? (
+                        <div className="space-y-2">
+                          <label
+                            htmlFor="quick-task-branch"
+                            className="text-sm font-medium text-foreground"
+                          >
+                            Branch
+                          </label>
+                          <Input
+                            id="quick-task-branch"
+                            value={quickBranch}
+                            onChange={(event) =>
+                              setQuickBranch(event.target.value)
+                            }
+                            placeholder="feature/my-task"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
+
+                  {createError ? (
+                    <p className="text-sm text-destructive">{createError}</p>
+                  ) : null}
+
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsTaskDialogOpen(false)}
+                      disabled={isCreating}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => void handleDispatchTask()}
+                      disabled={isCreating}
+                    >
+                      {isCreating ? "Dispatching…" : "Dispatch task"}
+                    </Button>
+                  </div>
                 </div>
               </DialogContent>
             </Dialog>
