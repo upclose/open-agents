@@ -105,7 +105,9 @@ function addContextWindow(
   return { ...model, context_window: contextLimit };
 }
 
-export async function fetchAvailableLanguageModels(): Promise<AvailableModel[]> {
+export async function fetchAvailableLanguageModels(): Promise<
+  AvailableModel[]
+> {
   const { models } = await gateway.getAvailableModels();
   return models.filter((model) => model.modelType === "language");
 }

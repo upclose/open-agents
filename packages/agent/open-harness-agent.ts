@@ -72,6 +72,58 @@ function getCompactionContextFromExperimentalContext(
 
 const DEFAULT_CONTEXT_LIMIT = 200_000;
 
+interface CompactionTuning {
+  triggerPercent: number;
+  minSavingsPercent: number;
+  retainRecentToolCalls: number;
+}
+
+const DEFAULT_COMPACTION_TUNING: CompactionTuning = {
+  triggerPercent: 0.58,
+  minSavingsPercent: 0.03,
+  retainRecentToolCalls: 32,
+};
+
+/**
+ * Optional model-specific compaction tuning overrides.
+ *
+ * Keys support exact matches ("provider/model") and partial matches
+ * (any substring of the full model id).
+ */
+const MODEL_COMPACTION_TUNING_OVERRIDES: Record<
+  string,
+  Partial<CompactionTuning>
+> = {};
+
+function getModelId(model: LanguageModel): string {
+  return typeof model === "string" ? model : model.modelId;
+}
+
+function resolveCompactionTuning(model: LanguageModel): CompactionTuning {
+  const modelId = getModelId(model);
+
+  const exactMatch = MODEL_COMPACTION_TUNING_OVERRIDES[modelId];
+  if (exactMatch) {
+    return {
+      ...DEFAULT_COMPACTION_TUNING,
+      ...exactMatch,
+    };
+  }
+
+  const partialMatch = Object.entries(MODEL_COMPACTION_TUNING_OVERRIDES).find(
+    ([key]) => modelId.includes(key),
+  );
+
+  if (partialMatch?.[1]) {
+    return {
+      ...DEFAULT_COMPACTION_TUNING,
+      ...partialMatch[1],
+    };
+  }
+
+  return DEFAULT_COMPACTION_TUNING;
+}
+
 export const defaultModel = gateway("anthropic/claude-haiku-4.5");
 export const defaultModelLabel = defaultModel.modelId;
 
@@ -98,16 +150,18 @@ export const openHarnessAgent = new ToolLoopAgent({
   prepareStep: ({ messages, model, steps, experimental_context }) => {
     const callContext =
       getCompactionContextFromExperimentalContext(experimental_context);
+    const compactionTuning = resolveCompactionTuning(model);
 
     return {
       messages: addCacheControl({
-        // TODO: If needed, expose aggressive compaction tuning via call options
-        // (for example retainRecentToolCalls/triggerPercent/minSavingsPercent).
         messages: aggressiveCompactContext({
           messages,
           steps,
           contextLimit: callContext?.contextLimit ?? DEFAULT_CONTEXT_LIMIT,
           lastInputTokens: callContext?.lastInputTokens,
+          triggerPercent: compactionTuning.triggerPercent,
+          minSavingsPercent: compactionTuning.minSavingsPercent,
+          retainRecentToolCalls: compactionTuning.retainRecentToolCalls,
         }),
         model,
       }),
