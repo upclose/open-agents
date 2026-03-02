@@ -22,12 +22,14 @@ type SessionLayoutShellProps = {
     defaultModelId: string | null;
     chats: SessionChatListItem[];
   };
+  initialSessionsData?: SessionWithUnread[];
   children: React.ReactNode;
 };
 
 export function SessionLayoutShell({
   session: initialSession,
   initialChatsData,
+  initialSessionsData,
   children,
 }: SessionLayoutShellProps) {
   const router = useRouter();
@@ -49,6 +51,7 @@ export function SessionLayoutShell({
     createSession,
   } = useSessions({
     enabled: true,
+    initialData: initialSessionsData,
   });
 
   // Derive lastRepo from the current session for the new-session dialog
