@@ -107,7 +107,9 @@ export function useSessions(options?: UseSessionsOptions) {
       return;
     }
 
-    const sessionsById = new Map(data.sessions.map((session) => [session.id, session]));
+    const sessionsById = new Map(
+      data.sessions.map((session) => [session.id, session]),
+    );
     let changed = false;
 
     for (const [sessionId, overlay] of sessionStreamingOverlays) {
@@ -150,7 +152,9 @@ export function useSessions(options?: UseSessionsOptions) {
           setAt: Date.now(),
           seenServerStreaming: false,
         };
-        if (!overlaysEqual(sessionStreamingOverlays.get(sessionId), nextOverlay)) {
+        if (
+          !overlaysEqual(sessionStreamingOverlays.get(sessionId), nextOverlay)
+        ) {
           sessionStreamingOverlays.set(sessionId, nextOverlay);
           setOverlayVersion((value) => value + 1);
         }

@@ -34,12 +34,19 @@ import {
   useSyncExternalStore,
 } from "react";
 import useSWR from "swr";
-import type { WebAgentUIMessage, WebAgentUIMessagePart } from "@/app/types";
+import type {
+  WebAgentUIMessage,
+  WebAgentUIMessagePart,
+  WebAgentUIToolPart,
+} from "@/app/types";
 import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown";
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { QuestionPanel } from "@/components/question-panel";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
+import { TaskGroupView } from "@/components/task-group-view";
+import { ThinkingBlock } from "@/components/thinking-block";
+import { ToolCall } from "@/components/tool-call";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +74,11 @@ import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSessions } from "@/hooks/use-sessions";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { isChatInFlight as isChatInFlightStatus } from "@/lib/chat-streaming-state";
+import {
+  CHAT_VIEW_MODE_STORAGE_KEY,
+  DEFAULT_CHAT_VIEW_MODE,
+  loadChatViewModeFromStorage,
+} from "@/lib/chat-view-mode";
 import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
 import {
   type AvailableModel,
@@ -755,6 +767,7 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [chatViewMode, setChatViewMode] = useState(DEFAULT_CHAT_VIEW_MODE);
   const hasMounted = useHasMounted();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isMountedRef = useRef(true);
@@ -765,6 +778,22 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    setChatViewMode(loadChatViewModeFromStorage());
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === CHAT_VIEW_MODE_STORAGE_KEY) {
+        setChatViewMode(loadChatViewModeFromStorage());
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
   const {
     state: recordingState,
     error: recordingError,
@@ -891,6 +920,7 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
     [hasMounted, messages, initialMessages],
   );
   const isChatInFlight = isChatInFlightStatus(status);
+  const isCondensedView = chatViewMode === "condensed";
   const [isChatInFlightSettled, setIsChatInFlightSettled] =
     useState(isChatInFlight);
   const chatInFlightSettleTimeoutRef = useRef<ReturnType<
@@ -1151,10 +1181,11 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
     () =>
       groupedRenderMessages.map(
         ({ message: m, groups, isStreaming: isMessageStreaming }) => {
-          // For assistant messages, find the LAST non-empty text part
-          // and only render that one (inbox mode — concise summary).
           const lastAssistantTextIndex = (() => {
-            if (m.role !== "assistant") return -1;
+            if (!isCondensedView || m.role !== "assistant") {
+              return -1;
+            }
+
             for (let i = groups.length - 1; i >= 0; i--) {
               const g = groups[i];
               if (
@@ -1165,44 +1196,90 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
                 return i;
               }
             }
+
             return -1;
           })();
 
           return groups.map((group, groupIndex) => {
-            // Hide task groups entirely — inbox mode
             if (group.type === "task-group") {
-              return null;
+              if (isCondensedView) {
+                return null;
+              }
+
+              return (
+                <div key={`${m.id}-${group.renderKey}`} className="max-w-full">
+                  <TaskGroupView
+                    taskParts={group.tasks}
+                    activeApprovalId={null}
+                    isStreaming={isMessageStreaming}
+                  />
+                </div>
+              );
             }
 
             const p = group.part;
 
-            // Hide reasoning/thinking blocks
             if (isReasoningUIPart(p)) {
-              return null;
-            }
-
-            // Hide all tool calls — inbox mode
-            if (isToolUIPart(p)) {
-              return null;
-            }
-
-            if (p.type === "text") {
-              // Skip empty text parts (can happen when agent only did tool calls)
-              if (!p.text.trim()) return null;
-
-              // Inbox mode: hide assistant text while the agent is still
-              // working — only reveal once the stream is complete.
-              if (m.role === "assistant" && isMessageStreaming) {
+              if (isCondensedView) {
                 return null;
               }
 
-              // Inbox mode: only render the last text part for assistant messages
+              return (
+                <div
+                  key={`${m.id}-${group.renderKey}`}
+                  className="flex justify-start"
+                >
+                  <ThinkingBlock
+                    text={p.text}
+                    isStreaming={isMessageStreaming && p.state === "streaming"}
+                  />
+                </div>
+              );
+            }
+
+            if (isToolUIPart(p)) {
+              if (isCondensedView) {
+                return null;
+              }
+
+              return (
+                <div key={`${m.id}-${group.renderKey}`} className="max-w-full">
+                  <ToolCall
+                    part={p as WebAgentUIToolPart}
+                    activeApprovalId={
+                      p.state === "approval-requested"
+                        ? (p.approval?.id ?? null)
+                        : null
+                    }
+                    isStreaming={isMessageStreaming}
+                  />
+                </div>
+              );
+            }
+
+            if (p.type === "text") {
+              if (!p.text.trim()) return null;
+
               if (
                 m.role === "assistant" &&
+                isCondensedView &&
+                isMessageStreaming
+              ) {
+                return null;
+              }
+
+              if (
+                m.role === "assistant" &&
+                isCondensedView &&
                 groupIndex !== lastAssistantTextIndex
               ) {
                 return null;
               }
+
+              const shouldAnimateAssistantText =
+                m.role === "assistant" &&
+                !isCondensedView &&
+                isMessageStreaming;
 
               return (
                 <div
@@ -1222,8 +1299,10 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
                     <div className="min-w-0 w-full overflow-hidden">
                       <Streamdown
                         animated={undefined}
-                        mode="static"
-                        isAnimating={false}
+                        mode={
+                          shouldAnimateAssistantText ? "streaming" : "static"
+                        }
+                        isAnimating={shouldAnimateAssistantText}
                         plugins={streamdownPlugins}
                       >
                         {p.text}
@@ -1257,7 +1336,7 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
           });
         },
       ),
-    [groupedRenderMessages],
+    [groupedRenderMessages, isCondensedView],
   );
   const [isUpdatingModel, setIsUpdatingModel] = useState(false);
   const lastStatusSyncAtRef = useRef(0);
