@@ -2059,16 +2059,29 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
     diff != null
       ? diff.summary.totalAdditions > 0 || diff.summary.totalDeletions > 0
       : (session.linesAdded ?? 0) > 0 || (session.linesRemoved ?? 0) > 0;
+  const isSandboxSpinningUp =
+    isCreatingSandbox ||
+    isRestoringSnapshot ||
+    isServerRestoring ||
+    isReconnectingSandbox ||
+    lifecycleTiming.state === "provisioning";
+  const isGitActionDisabled = isSandboxSpinningUp;
   const isCreatePrBranchReady = Boolean(session?.branch);
   const canCreatePr =
-    hasRepo && !hasExistingPr && !hasUncommittedGitChanges && hasBranchDiff;
-  const createPrDisabledReason = !isCreatePrBranchReady
-    ? "Waiting for branch info to sync"
-    : hasUncommittedGitChanges
-      ? "Commit and push changes before creating a pull request"
-      : !hasBranchDiff
-        ? "No committed branch changes yet"
-        : null;
+    hasRepo &&
+    !hasExistingPr &&
+    !hasUncommittedGitChanges &&
+    hasBranchDiff &&
+    !isGitActionDisabled;
+  const createPrDisabledReason = isGitActionDisabled
+    ? "Sandbox is still spinning up"
+    : !isCreatePrBranchReady
+      ? "Waiting for branch info to sync"
+      : hasUncommittedGitChanges
+        ? "Commit and push changes before creating a pull request"
+        : !hasBranchDiff
+          ? "No committed branch changes yet"
+          : null;
   const showCommitAction =
     hasRepo &&
     (hasUncommittedGitChanges || (hasExistingPr && hasUnpushedCommits));
@@ -2220,7 +2233,7 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowDiffPanel(!showDiffPanel)}
-                disabled={!diff && !session.cachedDiff}
+                disabled={isGitActionDisabled || (!diff && !session.cachedDiff)}
               >
                 <GitCompare className="h-4 w-4 md:mr-2" />
                 <span className="hidden md:inline">Diff</span>
@@ -2251,6 +2264,7 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => setCommitDialogOpen(true)}
+                    disabled={isGitActionDisabled}
                   >
                     <GitCommit className="h-4 w-4 md:mr-2" />
                     <span className="hidden md:inline">
@@ -2260,6 +2274,7 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
                 ) : (
                   <Button
                     size="sm"
+                    disabled={isGitActionDisabled}
                     onClick={() => {
                       const prUrl = `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`;
                       window.open(prUrl, "_blank", "noopener,noreferrer");
@@ -2278,6 +2293,7 @@ export function SessionChatContent({ initialModels }: SessionChatContentProps) {
                       variant="outline"
                       size="sm"
                       onClick={() => setCommitDialogOpen(true)}
+                      disabled={isGitActionDisabled}
                     >
                       <GitCommit className="h-4 w-4 md:mr-2" />
                       <span className="hidden md:inline">
