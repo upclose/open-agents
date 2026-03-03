@@ -9,6 +9,7 @@ import {
   ArrowUp,
   Check,
   Copy,
+  EllipsisVertical,
   ExternalLink,
   FolderGit2,
   GitCommit,
@@ -16,8 +17,10 @@ import {
   GitPullRequest,
   Link2,
   Loader2,
+  MessageSquareMore,
   Mic,
   Paperclip,
+  Plus,
   RefreshCw,
   RotateCcw,
   Share2,
@@ -59,6 +62,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ChatSwitcherDropdown } from "@/components/chat-switcher-dropdown";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Tooltip,
@@ -484,11 +502,17 @@ function SandboxInputOverlay({
 function ShareDialog({
   sessionId,
   initialShareId,
+  externalOpen,
+  onExternalOpenChange,
 }: {
   sessionId: string;
   initialShareId: string | null;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen ?? internalOpen;
+  const setOpen = onExternalOpenChange ?? setInternalOpen;
   const [shareId, setShareId] = useState(initialShareId);
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -556,14 +580,18 @@ function ShareDialog({
     });
   }
 
+  const isExternallyControlled = externalOpen !== undefined;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          <Share2 className="h-4 w-4 md:mr-2" />
-          <span className="hidden md:inline">Share</span>
-        </Button>
-      </DialogTrigger>
+      {!isExternallyControlled && (
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="sm">
+            <Share2 className="h-4 w-4 mr-2" />
+            Share
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Share session</DialogTitle>
@@ -635,6 +663,11 @@ function ShareDialog({
 
 export function SessionChatContent(_props: unknown) {
   const router = useRouter();
+  const {
+    chats: mobileChats,
+    createChat: mobileCreateChat,
+    switchChat: mobileSwitchChat,
+  } = useSessionLayout();
   const [input, setInput] = useState("");
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
   const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
@@ -643,6 +676,9 @@ export function SessionChatContent(_props: unknown) {
   const [prDialogOpen, setPrDialogOpen] = useState(false);
   const [repoDialogOpen, setRepoDialogOpen] = useState(false);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [mobileArchiveDialogOpen, setMobileArchiveDialogOpen] = useState(false);
+  const [mobileShareOpen, setMobileShareOpen] = useState(false);
+  const [mobileChatDrawerOpen, setMobileChatDrawerOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const hasMounted = useHasMounted();
@@ -752,6 +788,11 @@ export function SessionChatContent(_props: unknown) {
     models,
     modelsLoading,
   } = useSessionChatContext();
+  const mobileActiveChatId = chatInfo.id;
+  const handleMobileNewChat = () => {
+    const { chat: newChat } = mobileCreateChat();
+    mobileSwitchChat(newChat.id);
+  };
   const {
     messages,
     error,
@@ -2044,10 +2085,10 @@ export function SessionChatContent(_props: unknown) {
   return (
     <>
       {/* Header */}
-      <header className="border-b border-border px-3 py-2 md:px-4 md:py-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2 md:gap-4">
-            <SidebarTrigger className="shrink-0 sidebar:hidden" />
+      <header className="border-b border-border px-3 py-2 lg:px-4 lg:py-3">
+        <div className="relative flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2 lg:gap-4">
+            <SidebarTrigger className="shrink-0" />
             <div className="flex min-w-0 items-center gap-2 text-sm">
               {session.repoName ? (
                 <>
@@ -2098,194 +2139,486 @@ export function SessionChatContent(_props: unknown) {
               {sandboxUiStatus.label}
             </span>
           </div>
-          <div className="flex items-center gap-1 md:gap-2">
-            <ShareDialog
-              sessionId={session.id}
-              initialShareId={session.shareId}
-            />
-            {isArchived ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={isUnarchiving || isArchiveSnapshotPending}
-                onClick={() => {
-                  setIsUnarchiving(true);
-                  void unarchiveSession()
-                    .catch((error: unknown) => {
-                      console.error("Failed to unarchive session:", error);
-                    })
-                    .finally(() => {
-                      setIsUnarchiving(false);
-                    });
-                }}
-              >
-                {isUnarchiving ? (
-                  <Loader2 className="h-4 w-4 animate-spin md:mr-2" />
-                ) : (
-                  <ArchiveRestore className="h-4 w-4 md:mr-2" />
-                )}
-                <span className="hidden md:inline">
-                  {isUnarchiving
-                    ? "Unarchiving..."
-                    : isArchiveSnapshotPending
-                      ? "Snapshotting..."
-                      : "Unarchive"}
-                </span>
-              </Button>
-            ) : (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    <Archive className="h-4 w-4 md:mr-2" />
-                    <span className="hidden md:inline">Archive</span>
-                  </Button>
-                </DialogTrigger>
-                <DialogContent showCloseButton={false}>
-                  <DialogHeader>
-                    <DialogTitle>Archive session?</DialogTitle>
-                    <DialogDescription>
-                      This will stop the sandbox and archive the session. You
-                      can still view it in the archive tab.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button variant="outline">Cancel</Button>
-                    </DialogClose>
-                    <DialogClose asChild>
-                      <Button
-                        onClick={() => {
-                          void archiveSession().catch((error: unknown) => {
-                            console.error("Failed to archive session:", error);
-                          });
-                          router.push("/");
-                        }}
-                      >
-                        Archive
-                      </Button>
-                    </DialogClose>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-            {!supportsDiff ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button variant="ghost" size="sm" disabled>
-                      <GitCompare className="h-4 w-4 md:mr-2" />
-                      <span className="hidden md:inline">Diff</span>
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={8}>
-                  Not available for in-memory sandboxes
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowDiffPanel(!showDiffPanel)}
-                disabled={!diff && !session.cachedDiff}
-              >
-                <GitCompare className="h-4 w-4 md:mr-2" />
-                <span className="hidden md:inline">Diff</span>
-                {diff &&
-                  (diff.summary.totalAdditions > 0 ||
-                    diff.summary.totalDeletions > 0) && (
-                    <span className="ml-1 text-xs md:ml-2">
-                      <span className="text-green-500">
-                        +{diff.summary.totalAdditions}
-                      </span>{" "}
-                      <span className="text-red-400">
-                        -{diff.summary.totalDeletions}
-                      </span>
-                    </span>
+          <div className="absolute left-1/2 hidden -translate-x-1/2 xl:block">
+            <ChatSwitcherDropdown />
+          </div>
+          {/* Right-side actions */}
+          <div className="flex items-center gap-1 xl:gap-2">
+            {/* Desktop action buttons */}
+            <div className="hidden items-center gap-2 xl:flex">
+              {isArchived ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={isUnarchiving || isArchiveSnapshotPending}
+                  onClick={() => {
+                    setIsUnarchiving(true);
+                    void unarchiveSession()
+                      .catch((error: unknown) => {
+                        console.error("Failed to unarchive session:", error);
+                      })
+                      .finally(() => {
+                        setIsUnarchiving(false);
+                      });
+                  }}
+                >
+                  {isUnarchiving ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <ArchiveRestore className="h-4 w-4 mr-2" />
                   )}
-                {hasUncommittedGitChanges && (
-                  <span
-                    className="ml-1 inline-block h-2 w-2 rounded-full bg-orange-500"
-                    aria-label="Uncommitted changes"
-                  />
-                )}
-              </Button>
-            )}
-            {hasRepo ? (
-              hasExistingPr ? (
-                showCommitAction ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCommitDialogOpen(true)}
-                  >
-                    <GitCommit className="h-4 w-4 md:mr-2" />
-                    <span className="hidden md:inline">
-                      {commitActionLabel}
-                    </span>
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const prUrl = `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`;
-                      window.open(prUrl, "_blank", "noopener,noreferrer");
-                    }}
-                  >
-                    <GitPullRequest className="h-4 w-4 md:mr-2" />
-                    <span className="hidden md:inline">
-                      View PR #{session.prNumber}
-                    </span>
-                  </Button>
-                )
+                  <span>
+                    {isUnarchiving
+                      ? "Unarchiving..."
+                      : isArchiveSnapshotPending
+                        ? "Snapshotting..."
+                        : "Unarchive"}
+                  </span>
+                </Button>
               ) : (
-                <>
-                  {showCommitAction && (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <Archive className="h-4 w-4 mr-2" />
+                      <span>Archive</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent showCloseButton={false}>
+                    <DialogHeader>
+                      <DialogTitle>Archive session?</DialogTitle>
+                      <DialogDescription>
+                        This will stop the sandbox and archive the session. You
+                        can still view it in the archive tab.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                      <DialogClose asChild>
+                        <Button variant="outline">Cancel</Button>
+                      </DialogClose>
+                      <DialogClose asChild>
+                        <Button
+                          onClick={() => {
+                            void archiveSession().catch((error: unknown) => {
+                              console.error(
+                                "Failed to archive session:",
+                                error,
+                              );
+                            });
+                            router.push("/sessions");
+                          }}
+                        >
+                          Archive
+                        </Button>
+                      </DialogClose>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+              {!supportsDiff ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button variant="ghost" size="sm" disabled>
+                        <GitCompare className="h-4 w-4 mr-2" />
+                        <span>Diff</span>
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={8}>
+                    Not available for in-memory sandboxes
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowDiffPanel(!showDiffPanel)}
+                  disabled={!diff && !session.cachedDiff}
+                >
+                  <GitCompare className="h-4 w-4 mr-2" />
+                  <span>Diff</span>
+                  {diff &&
+                    (diff.summary.totalAdditions > 0 ||
+                      diff.summary.totalDeletions > 0) && (
+                      <span className="ml-2 text-xs">
+                        <span className="text-green-500">
+                          +{diff.summary.totalAdditions}
+                        </span>{" "}
+                        <span className="text-red-400">
+                          -{diff.summary.totalDeletions}
+                        </span>
+                      </span>
+                    )}
+                  {hasUncommittedGitChanges && (
+                    <span
+                      className="ml-1 inline-block h-2 w-2 rounded-full bg-orange-500"
+                      aria-label="Uncommitted changes"
+                    />
+                  )}
+                </Button>
+              )}
+              {hasRepo ? (
+                hasExistingPr ? (
+                  showCommitAction ? (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setCommitDialogOpen(true)}
                     >
-                      <GitCommit className="h-4 w-4 md:mr-2" />
-                      <span className="hidden md:inline">
-                        {commitActionLabel}
-                      </span>
+                      <GitCommit className="h-4 w-4 mr-2" />
+                      <span>{commitActionLabel}</span>
                     </Button>
-                  )}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPrDialogOpen(true)}
-                          disabled={!canCreatePr || !isCreatePrBranchReady}
-                        >
-                          <GitPullRequest className="h-4 w-4 md:mr-2" />
-                          <span className="hidden md:inline">Create PR</span>
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    {createPrDisabledReason && (
-                      <TooltipContent side="bottom" sideOffset={8}>
-                        {createPrDisabledReason}
-                      </TooltipContent>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const prUrl = `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`;
+                        window.open(prUrl, "_blank", "noopener,noreferrer");
+                      }}
+                    >
+                      <GitPullRequest className="h-4 w-4 mr-2" />
+                      <span>View PR #{session.prNumber}</span>
+                    </Button>
+                  )
+                ) : (
+                  <>
+                    {showCommitAction && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCommitDialogOpen(true)}
+                      >
+                        <GitCommit className="h-4 w-4 mr-2" />
+                        <span>{commitActionLabel}</span>
+                      </Button>
                     )}
-                  </Tooltip>
-                </>
-              )
-            ) : !supportsRepoCreation ? null : (
-              // Session has no repo - show Create Repo button (not available for in-memory sandboxes)
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRepoDialogOpen(true)}
-              >
-                <FolderGit2 className="h-4 w-4 md:mr-2" />
-                <span className="hidden md:inline">Create Repo</span>
-              </Button>
-            )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPrDialogOpen(true)}
+                            disabled={!canCreatePr || !isCreatePrBranchReady}
+                          >
+                            <GitPullRequest className="h-4 w-4 mr-2" />
+                            <span>Create PR</span>
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      {createPrDisabledReason && (
+                        <TooltipContent side="bottom" sideOffset={8}>
+                          {createPrDisabledReason}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </>
+                )
+              ) : !supportsRepoCreation ? null : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRepoDialogOpen(true)}
+                >
+                  <FolderGit2 className="h-4 w-4 mr-2" />
+                  <span>Create Repo</span>
+                </Button>
+              )}
+            </div>
+
+            {/* Mobile: visible git action + overflow menu */}
+            <div className="flex items-center gap-1 xl:hidden">
+              {hasRepo ? (
+                hasExistingPr ? (
+                  showCommitAction ? (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="relative h-8 w-8"
+                      onClick={() => setCommitDialogOpen(true)}
+                    >
+                      <GitCommit className="h-4 w-4" />
+                      {hasUncommittedGitChanges && (
+                        <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        const prUrl = `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`;
+                        window.open(prUrl, "_blank", "noopener,noreferrer");
+                      }}
+                    >
+                      <GitPullRequest className="h-4 w-4" />
+                    </Button>
+                  )
+                ) : showCommitAction ? (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="relative h-8 w-8"
+                    onClick={() => setCommitDialogOpen(true)}
+                  >
+                    <GitCommit className="h-4 w-4" />
+                    {hasUncommittedGitChanges && (
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />
+                    )}
+                  </Button>
+                ) : canCreatePr && isCreatePrBranchReady ? (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setPrDialogOpen(true)}
+                  >
+                    <GitPullRequest className="h-4 w-4" />
+                  </Button>
+                ) : supportsDiff ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative h-8 w-8"
+                    onClick={() => setShowDiffPanel(!showDiffPanel)}
+                    disabled={!diff && !session.cachedDiff}
+                  >
+                    <GitCompare className="h-4 w-4" />
+                    {hasUncommittedGitChanges && (
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />
+                    )}
+                  </Button>
+                ) : null
+              ) : supportsRepoCreation ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setRepoDialogOpen(true)}
+                >
+                  <FolderGit2 className="h-4 w-4" />
+                </Button>
+              ) : null}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <EllipsisVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={() => setMobileChatDrawerOpen(true)}
+                  >
+                    <MessageSquareMore className="mr-2 h-4 w-4" />
+                    Switch Chat
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setMobileShareOpen(true)}>
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share
+                  </DropdownMenuItem>
+                  {isArchived ? (
+                    <DropdownMenuItem
+                      disabled={isUnarchiving || isArchiveSnapshotPending}
+                      onClick={() => {
+                        setIsUnarchiving(true);
+                        void unarchiveSession()
+                          .catch((error: unknown) => {
+                            console.error(
+                              "Failed to unarchive session:",
+                              error,
+                            );
+                          })
+                          .finally(() => {
+                            setIsUnarchiving(false);
+                          });
+                      }}
+                    >
+                      <ArchiveRestore className="mr-2 h-4 w-4" />
+                      {isUnarchiving
+                        ? "Unarchiving..."
+                        : isArchiveSnapshotPending
+                          ? "Snapshotting..."
+                          : "Unarchive"}
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() => setMobileArchiveDialogOpen(true)}
+                    >
+                      <Archive className="mr-2 h-4 w-4" />
+                      Archive
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  {supportsDiff && (
+                    <DropdownMenuItem
+                      disabled={!diff && !session.cachedDiff}
+                      onClick={() => setShowDiffPanel(!showDiffPanel)}
+                    >
+                      <GitCompare className="mr-2 h-4 w-4" />
+                      Diff
+                      {diff &&
+                        (diff.summary.totalAdditions > 0 ||
+                          diff.summary.totalDeletions > 0) && (
+                          <span className="ml-auto text-xs">
+                            <span className="text-green-500">
+                              +{diff.summary.totalAdditions}
+                            </span>{" "}
+                            <span className="text-red-400">
+                              -{diff.summary.totalDeletions}
+                            </span>
+                          </span>
+                        )}
+                    </DropdownMenuItem>
+                  )}
+                  {hasRepo ? (
+                    hasExistingPr ? (
+                      showCommitAction ? (
+                        <DropdownMenuItem
+                          onClick={() => setCommitDialogOpen(true)}
+                        >
+                          <GitCommit className="mr-2 h-4 w-4" />
+                          {commitActionLabel}
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            const prUrl = `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`;
+                            window.open(prUrl, "_blank", "noopener,noreferrer");
+                          }}
+                        >
+                          <GitPullRequest className="mr-2 h-4 w-4" />
+                          View PR #{session.prNumber}
+                        </DropdownMenuItem>
+                      )
+                    ) : (
+                      <>
+                        {showCommitAction && (
+                          <DropdownMenuItem
+                            onClick={() => setCommitDialogOpen(true)}
+                          >
+                            <GitCommit className="mr-2 h-4 w-4" />
+                            {commitActionLabel}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          disabled={!canCreatePr || !isCreatePrBranchReady}
+                          onClick={() => setPrDialogOpen(true)}
+                        >
+                          <GitPullRequest className="mr-2 h-4 w-4" />
+                          Create PR
+                        </DropdownMenuItem>
+                      </>
+                    )
+                  ) : supportsRepoCreation ? (
+                    <DropdownMenuItem onClick={() => setRepoDialogOpen(true)}>
+                      <FolderGit2 className="mr-2 h-4 w-4" />
+                      Create Repo
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Mobile chat switcher drawer */}
+            <Drawer
+              open={mobileChatDrawerOpen}
+              onOpenChange={setMobileChatDrawerOpen}
+            >
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Switch Chat</DrawerTitle>
+                </DrawerHeader>
+                <div className="max-h-[60vh] overflow-y-auto px-2 pb-4">
+                  <div className="space-y-0.5">
+                    {mobileChats.map((chat) => (
+                      <button
+                        key={chat.id}
+                        type="button"
+                        onClick={() => {
+                          mobileSwitchChat(chat.id);
+                          setMobileChatDrawerOpen(false);
+                        }}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left transition-colors",
+                          chat.id === mobileActiveChatId
+                            ? "bg-secondary"
+                            : "hover:bg-muted/50",
+                        )}
+                      >
+                        <span className="truncate text-sm font-medium">
+                          {chat.title || "Untitled"}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {chat.isStreaming && (
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                          )}
+                          {chat.id === mobileActiveChatId && (
+                            <Check className="h-3.5 w-3.5 text-foreground" />
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 border-t border-border pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleMobileNewChat();
+                        setMobileChatDrawerOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      New chat
+                    </button>
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
+
+            {/* Mobile share dialog */}
+            <ShareDialog
+              sessionId={session.id}
+              initialShareId={session.shareId}
+              externalOpen={mobileShareOpen}
+              onExternalOpenChange={setMobileShareOpen}
+            />
+
+            {/* Mobile archive confirmation dialog */}
+            <Dialog
+              open={mobileArchiveDialogOpen}
+              onOpenChange={setMobileArchiveDialogOpen}
+            >
+              <DialogContent showCloseButton={false}>
+                <DialogHeader>
+                  <DialogTitle>Archive session?</DialogTitle>
+                  <DialogDescription>
+                    This will stop the sandbox and archive the session. You can
+                    still view it in the archive tab.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                  </DialogClose>
+                  <DialogClose asChild>
+                    <Button
+                      onClick={() => {
+                        void archiveSession().catch((error: unknown) => {
+                          console.error("Failed to archive session:", error);
+                        });
+                        router.push("/sessions");
+                      }}
+                    >
+                      Archive
+                    </Button>
+                  </DialogClose>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </header>

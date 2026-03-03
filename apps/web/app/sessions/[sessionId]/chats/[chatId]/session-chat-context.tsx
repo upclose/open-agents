@@ -1021,7 +1021,7 @@ export function SessionChatProvider({
               ),
             }
           : current,
-      { revalidate: false },
+      { revalidate: true },
     );
   }, [sessionRecord, mutate]);
 
@@ -1059,7 +1059,7 @@ export function SessionChatProvider({
               ),
             }
           : current,
-      { revalidate: false },
+      { revalidate: true },
     );
   }, [sessionRecord, mutate]);
 
