@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { InboxSidebar } from "@/components/inbox-sidebar";
 import { useBackgroundChatNotifications } from "@/hooks/use-background-chat-notifications";
 import {
@@ -17,7 +17,10 @@ import {
 import { useSessions, type SessionWithUnread } from "@/hooks/use-sessions";
 import type { Session } from "@/lib/db/schema";
 import type { Session as AuthSession } from "@/lib/session/types";
-import { SessionLayoutContext } from "./session-layout-context";
+import {
+  type QueuedComposerMessage,
+  SessionLayoutContext,
+} from "./session-layout-context";
 
 type SessionLayoutShellProps = {
   session: Session;
@@ -133,6 +136,44 @@ export function SessionLayoutShell({
     [router, sessionId],
   );
 
+  const [queuedMessagesByChatId, setQueuedMessagesByChatId] = useState<
+    Record<string, QueuedComposerMessage[]>
+  >({});
+
+  const setQueuedMessagesForChat = useCallback(
+    (
+      chatId: string,
+      updater: (
+        previousMessages: QueuedComposerMessage[],
+      ) => QueuedComposerMessage[],
+    ) => {
+      setQueuedMessagesByChatId((previousByChatId) => {
+        const previousForChat = previousByChatId[chatId] ?? [];
+        const nextForChat = updater(previousForChat);
+
+        if (nextForChat.length === 0) {
+          if (!(chatId in previousByChatId)) {
+            return previousByChatId;
+          }
+
+          const remainingByChatId = { ...previousByChatId };
+          delete remainingByChatId[chatId];
+          return remainingByChatId;
+        }
+
+        if (nextForChat === previousForChat) {
+          return previousByChatId;
+        }
+
+        return {
+          ...previousByChatId,
+          [chatId]: nextForChat,
+        };
+      });
+    },
+    [],
+  );
+
   // Detect when a background session finishes streaming and show a toast.
   useBackgroundChatNotifications(
     sessionsWithStreaming,
@@ -173,8 +214,18 @@ export function SessionLayoutShell({
       chatsLoading,
       createChat,
       switchChat,
+      queuedMessagesByChatId,
+      setQueuedMessagesForChat,
     }),
-    [initialSession, chats, chatsLoading, createChat, switchChat],
+    [
+      initialSession,
+      chats,
+      chatsLoading,
+      createChat,
+      switchChat,
+      queuedMessagesByChatId,
+      setQueuedMessagesForChat,
+    ],
   );
 
   return (

@@ -76,7 +76,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
+import {
+  type QueuedComposerMessage,
+  useSessionLayout,
+} from "@/app/sessions/[sessionId]/session-layout-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -193,11 +196,7 @@ interface GroupedRenderMessage {
   isStreaming: boolean;
 }
 
-type QueuedComposerMessage = {
-  id: string;
-  text: string;
-  files?: FileUIPart[];
-};
+const EMPTY_QUEUED_MESSAGES: QueuedComposerMessage[] = [];
 
 function getPartIdentity(part: WebAgentUIMessagePart): string {
   if (isToolUIPart(part)) {
@@ -729,12 +728,10 @@ export function SessionChatContent(_props: unknown) {
     chatsLoading: mobileChatsLoading,
     createChat: mobileCreateChat,
     switchChat: mobileSwitchChat,
+    queuedMessagesByChatId,
+    setQueuedMessagesForChat,
   } = useSessionLayout();
   const [input, setInput] = useState("");
-  const [queuedMessages, setQueuedMessages] = useState<QueuedComposerMessage[]>(
-    [],
-  );
-  const queuedMessageIdRef = useRef(0);
   const queuedMessageSendInFlightRef = useRef(false);
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
   const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
@@ -904,6 +901,8 @@ export function SessionChatContent(_props: unknown) {
     modelOptions,
     modelOptionsLoading,
   } = useSessionChatContext();
+  const queuedMessages =
+    queuedMessagesByChatId[chatInfo.id] ?? EMPTY_QUEUED_MESSAGES;
   const mobileActiveChatId = chatInfo.id;
   const handleMobileNewChat = () => {
     const { chat: newChat } = mobileCreateChat();
@@ -2345,17 +2344,19 @@ export function SessionChatContent(_props: unknown) {
     setInput("");
     clearImages();
 
-    setQueuedMessages((prev) => {
-      queuedMessageIdRef.current += 1;
-      return [
-        ...prev,
-        {
-          id: `queued-${queuedMessageIdRef.current}`,
-          text: messageText,
-          files,
-        },
-      ];
-    });
+    const queuedMessageId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `queued-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    setQueuedMessagesForChat(chatInfo.id, (previousMessages) => [
+      ...previousMessages,
+      {
+        id: queuedMessageId,
+        text: messageText,
+        files,
+      },
+    ]);
   }, [
     isArchived,
     isSandboxActive,
@@ -2363,6 +2364,8 @@ export function SessionChatContent(_props: unknown) {
     images.length,
     getFileParts,
     clearImages,
+    setQueuedMessagesForChat,
+    chatInfo.id,
   ]);
 
   useEffect(() => {
@@ -2385,7 +2388,9 @@ export function SessionChatContent(_props: unknown) {
     }
 
     queuedMessageSendInFlightRef.current = true;
-    setQueuedMessages((prev) => prev.slice(1));
+    setQueuedMessagesForChat(chatInfo.id, (previousMessages) =>
+      previousMessages.slice(1),
+    );
 
     void sendQueuedMessage(nextMessage).finally(() => {
       queuedMessageSendInFlightRef.current = false;
@@ -2398,6 +2403,8 @@ export function SessionChatContent(_props: unknown) {
     isSandboxActive,
     queuedMessages,
     sendQueuedMessage,
+    setQueuedMessagesForChat,
+    chatInfo.id,
   ]);
 
   const chatSwitcherContent = (
