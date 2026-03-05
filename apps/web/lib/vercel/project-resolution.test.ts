@@ -34,6 +34,18 @@ function toResponse(response: MockApiResponse): Response {
   } as Response;
 }
 
+async function withSuppressedConsoleError<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    return await fn();
+  } finally {
+    console.error = originalConsoleError;
+  }
+}
+
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (
   input: string | URL | Request,
@@ -337,11 +349,13 @@ describe("resolveVercelProject", () => {
       },
     };
 
-    const result = await resolveVercelProject({
-      vercelToken: "tok_bad",
-      repoOwner: "acme",
-      repoName: "app",
-    });
+    const result = await withSuppressedConsoleError(() =>
+      resolveVercelProject({
+        vercelToken: "tok_bad",
+        repoOwner: "acme",
+        repoName: "app",
+      }),
+    );
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -356,18 +370,22 @@ describe("resolveVercelProject", () => {
       throw new Error("network down");
     }) as unknown as typeof globalThis.fetch;
 
-    const result = await resolveVercelProject({
-      vercelToken: "tok_test",
-      repoOwner: "acme",
-      repoName: "app",
-    });
+    try {
+      const result = await withSuppressedConsoleError(() =>
+        resolveVercelProject({
+          vercelToken: "tok_test",
+          repoOwner: "acme",
+          repoName: "app",
+        }),
+      );
 
-    globalThis.fetch = savedFetch;
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toBe("api_error");
-      expect(result.message).toContain("network down");
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toBe("api_error");
+        expect(result.message).toContain("network down");
+      }
+    } finally {
+      globalThis.fetch = savedFetch;
     }
   });
 
