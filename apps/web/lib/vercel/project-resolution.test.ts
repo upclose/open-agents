@@ -2,13 +2,37 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
-// Track fetch calls
-let fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
-let fetchResponse: { ok: boolean; status: number; body: unknown } = {
+interface MockApiResponse {
+  ok: boolean;
+  status: number;
+  body: unknown;
+}
+
+const EMPTY_PROJECTS_RESPONSE: MockApiResponse = {
   ok: true,
   status: 200,
   body: { projects: [] },
 };
+
+// Track fetch calls
+let fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+let teamsApiResponse: MockApiResponse = {
+  ok: true,
+  status: 200,
+  body: { teams: [] },
+};
+let projectApiResponsesByScope: Record<string, MockApiResponse> = {
+  personal: EMPTY_PROJECTS_RESPONSE,
+};
+
+function toResponse(response: MockApiResponse): Response {
+  return {
+    ok: response.ok,
+    status: response.status,
+    text: async () => JSON.stringify(response.body),
+    json: async () => response.body,
+  } as Response;
+}
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (
@@ -21,13 +45,27 @@ globalThis.fetch = (async (
       : input instanceof URL
         ? input.toString()
         : input.url;
+
   fetchCalls.push({ url, init });
-  return {
-    ok: fetchResponse.ok,
-    status: fetchResponse.status,
-    text: async () => JSON.stringify(fetchResponse.body),
-    json: async () => fetchResponse.body,
-  } as Response;
+
+  const parsed = new URL(url);
+
+  if (parsed.pathname === "/v2/teams") {
+    return toResponse(teamsApiResponse);
+  }
+
+  if (parsed.pathname === "/v10/projects") {
+    const scopeKey = parsed.searchParams.get("teamId") ?? "personal";
+    const response =
+      projectApiResponsesByScope[scopeKey] ?? EMPTY_PROJECTS_RESPONSE;
+    return toResponse(response);
+  }
+
+  return toResponse({
+    ok: false,
+    status: 404,
+    body: { error: "not_found" },
+  });
 }) as typeof globalThis.fetch;
 
 const { resolveVercelProject } = await import("./project-resolution");
@@ -39,11 +77,22 @@ afterAll(() => {
 describe("resolveVercelProject", () => {
   beforeEach(() => {
     fetchCalls = [];
-    fetchResponse = { ok: true, status: 200, body: { projects: [] } };
+    teamsApiResponse = { ok: true, status: 200, body: { teams: [] } };
+    projectApiResponsesByScope = {
+      personal: { ok: true, status: 200, body: { projects: [] } },
+    };
   });
 
-  test("returns project_unresolved when no projects match", async () => {
-    fetchResponse = { ok: true, status: 200, body: { projects: [] } };
+  test("returns project_unresolved when no projects match in any scope", async () => {
+    teamsApiResponse = {
+      ok: true,
+      status: 200,
+      body: { teams: [{ id: "team_1", slug: "acme" }] },
+    };
+    projectApiResponsesByScope = {
+      personal: { ok: true, status: 200, body: { projects: [] } },
+      team_1: { ok: true, status: 200, body: { projects: [] } },
+    };
 
     const result = await resolveVercelProject({
       vercelToken: "tok_test",
@@ -56,16 +105,25 @@ describe("resolveVercelProject", () => {
       expect(result.reason).toBe("project_unresolved");
     }
 
-    expect(fetchCalls.length).toBe(1);
-    expect(fetchCalls[0]!.url).toContain("/v10/projects");
-    expect(fetchCalls[0]!.url).toContain("repo=acme%2Fapp");
-    expect(fetchCalls[0]!.init?.headers).toEqual({
+    expect(fetchCalls.length).toBe(3);
+    expect(fetchCalls[0]!.url).toContain("/v2/teams");
+    const personalCall = fetchCalls.find(
+      (call) =>
+        call.url.includes("/v10/projects") && !call.url.includes("teamId="),
+    );
+    expect(personalCall?.url).toContain("repo=acme%2Fapp");
+    expect(personalCall?.url).toContain("repoType=github");
+    expect(personalCall?.init?.headers).toEqual({
       Authorization: "Bearer tok_test",
     });
+    const teamCall = fetchCalls.find((call) =>
+      call.url.includes("teamId=team_1"),
+    );
+    expect(teamCall).toBeDefined();
   });
 
-  test("returns project info when exactly one project matches", async () => {
-    fetchResponse = {
+  test("returns project info when exactly one project matches in personal scope", async () => {
+    projectApiResponsesByScope.personal = {
       ok: true,
       status: 200,
       body: {
@@ -95,15 +153,68 @@ describe("resolveVercelProject", () => {
     }
   });
 
-  test("returns project_ambiguous when multiple projects match", async () => {
-    fetchResponse = {
+  test("resolves project from team scope when personal scope has no match", async () => {
+    teamsApiResponse = {
       ok: true,
       status: 200,
-      body: {
-        projects: [
-          { id: "prj_1", name: "app-1", accountId: "team_1" },
-          { id: "prj_2", name: "app-2", accountId: "team_2" },
-        ],
+      body: { teams: [{ id: "team_456", slug: "vercel-labs" }] },
+    };
+    projectApiResponsesByScope = {
+      personal: { ok: true, status: 200, body: { projects: [] } },
+      team_456: {
+        ok: true,
+        status: 200,
+        body: {
+          projects: [
+            {
+              id: "prj_team",
+              name: "open-harness",
+              accountId: "team_456",
+            },
+          ],
+        },
+      },
+    };
+
+    const result = await resolveVercelProject({
+      vercelToken: "tok_test",
+      repoOwner: "vercel-labs",
+      repoName: "open-harness",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.project.projectId).toBe("prj_team");
+      expect(result.project.orgId).toBe("team_456");
+      expect(result.project.orgSlug).toBe("vercel-labs");
+    }
+
+    const teamCall = fetchCalls.find((call) =>
+      call.url.includes("teamId=team_456"),
+    );
+    expect(teamCall).toBeDefined();
+  });
+
+  test("returns project_ambiguous when multiple unique projects match", async () => {
+    teamsApiResponse = {
+      ok: true,
+      status: 200,
+      body: { teams: [{ id: "team_1", slug: "acme" }] },
+    };
+    projectApiResponsesByScope = {
+      personal: {
+        ok: true,
+        status: 200,
+        body: {
+          projects: [{ id: "prj_1", name: "app-1", accountId: "team_1" }],
+        },
+      },
+      team_1: {
+        ok: true,
+        status: 200,
+        body: {
+          projects: [{ id: "prj_2", name: "app-2", accountId: "team_1" }],
+        },
       },
     };
 
@@ -120,8 +231,12 @@ describe("resolveVercelProject", () => {
     }
   });
 
-  test("returns api_error on non-ok response", async () => {
-    fetchResponse = { ok: false, status: 403, body: { error: "forbidden" } };
+  test("returns api_error when all project lookups fail", async () => {
+    projectApiResponsesByScope.personal = {
+      ok: false,
+      status: 403,
+      body: { error: "forbidden" },
+    };
 
     const result = await resolveVercelProject({
       vercelToken: "tok_bad",
@@ -137,7 +252,6 @@ describe("resolveVercelProject", () => {
   });
 
   test("returns api_error on network failure", async () => {
-    // Temporarily override fetch to throw
     const savedFetch = globalThis.fetch;
     globalThis.fetch = (async () => {
       throw new Error("network down");
@@ -159,7 +273,7 @@ describe("resolveVercelProject", () => {
   });
 
   test("handles project without link/org gracefully", async () => {
-    fetchResponse = {
+    projectApiResponsesByScope.personal = {
       ok: true,
       status: 200,
       body: {
