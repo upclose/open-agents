@@ -49,6 +49,22 @@ interface CreateSandboxRequest {
   sandboxType?: "hybrid" | "vercel" | "just-bash";
 }
 
+type VercelEnvResolutionStatus =
+  | "resolved"
+  | "skipped_reconnect"
+  | "no_repo_context"
+  | "no_vercel_auth"
+  | "project_unresolved"
+  | "project_ambiguous"
+  | "api_error";
+
+interface VercelEnvResolutionMeta {
+  status: VercelEnvResolutionStatus;
+  repoOwner?: string;
+  repoName?: string;
+  message?: string;
+}
+
 export async function POST(req: Request) {
   let body: CreateSandboxRequest;
   try {
@@ -139,10 +155,18 @@ export async function POST(req: Request) {
     sessionRecord?.repoName ??
     (repoUrl ? parseGitHubUrl(repoUrl)?.repo : undefined);
 
+  const vercelEnvResolution: VercelEnvResolutionMeta = {
+    status: providedSandboxId ? "skipped_reconnect" : "no_repo_context",
+    ...(repoOwner ? { repoOwner } : {}),
+    ...(repoName ? { repoName } : {}),
+  };
+
   if (!providedSandboxId && repoOwner && repoName) {
     try {
       const vercelToken = await getUserVercelToken(session.user.id);
-      if (vercelToken) {
+      if (!vercelToken) {
+        vercelEnvResolution.status = "no_vercel_auth";
+      } else {
         const result = await resolveVercelProject({
           vercelToken,
           repoOwner,
@@ -154,9 +178,19 @@ export async function POST(req: Request) {
           if (result.project.orgId) {
             env.VERCEL_ORG_ID = result.project.orgId;
           }
+          vercelEnvResolution.status = "resolved";
+        } else {
+          vercelEnvResolution.status = result.reason;
+          vercelEnvResolution.message = result.message;
+          console.info(
+            `[Sandbox] Skipping Vercel env injection (${result.reason}) for ${repoOwner}/${repoName}`,
+          );
         }
       }
     } catch (error) {
+      vercelEnvResolution.status = "api_error";
+      vercelEnvResolution.message =
+        error instanceof Error ? error.message : String(error);
       console.error(
         "[Sandbox] Vercel env resolution failed (non-blocking):",
         error,
@@ -194,6 +228,7 @@ export async function POST(req: Request) {
       timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
       currentBranch: sandbox.currentBranch,
       mode: "hybrid",
+      vercelEnvResolution,
     });
   }
 
@@ -341,6 +376,7 @@ export async function POST(req: Request) {
     currentBranch: repoUrl ? branch : undefined,
     mode: sandboxType,
     timing: { readyMs },
+    vercelEnvResolution,
   });
 }
 

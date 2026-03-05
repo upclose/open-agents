@@ -182,6 +182,12 @@ describe("/api/sandbox lifecycle kicks", () => {
 
     const response = await POST(request);
     expect(response.ok).toBe(true);
+
+    const data = (await response.json()) as {
+      vercelEnvResolution?: { status?: string };
+    };
+
+    expect(data.vercelEnvResolution?.status).toBe("skipped_reconnect");
     expect(kickCalls.length).toBe(1);
     expect(kickCalls[0]?.sessionId).toBe("session-1");
     expect(kickCalls[0]?.reason).toBe("sandbox-created");
@@ -202,6 +208,12 @@ describe("/api/sandbox lifecycle kicks", () => {
 
     const response = await POST(request);
     expect(response.ok).toBe(true);
+
+    const data = (await response.json()) as {
+      vercelEnvResolution?: { status?: string };
+    };
+
+    expect(data.vercelEnvResolution?.status).toBe("no_repo_context");
     expect(kickCalls.length).toBe(1);
     expect(kickCalls[0]?.sessionId).toBe("session-1");
     expect(kickCalls[0]?.reason).toBe("sandbox-created");
@@ -251,6 +263,12 @@ describe("/api/sandbox lifecycle kicks", () => {
     const response = await POST(request);
     expect(response.ok).toBe(true);
 
+    const data = (await response.json()) as {
+      vercelEnvResolution?: { status?: string };
+    };
+
+    expect(data.vercelEnvResolution?.status).toBe("resolved");
+
     const config = connectConfigs.find(
       (c) => isConnectConfig(c) && c.state.type === "vercel",
     ) as { options?: { env?: Record<string, string> } } | undefined;
@@ -284,6 +302,57 @@ describe("/api/sandbox lifecycle kicks", () => {
 
     const response = await POST(request);
     expect(response.ok).toBe(true);
+
+    const data = (await response.json()) as {
+      vercelEnvResolution?: { status?: string };
+    };
+
+    expect(data.vercelEnvResolution?.status).toBe("no_vercel_auth");
+
+    const config = connectConfigs.find(
+      (c) => isConnectConfig(c) && c.state.type === "vercel",
+    ) as { options?: { env?: Record<string, string> } } | undefined;
+
+    expect(config?.options?.env?.VERCEL_TOKEN).toBeUndefined();
+    expect(config?.options?.env?.VERCEL_PROJECT_ID).toBeUndefined();
+  });
+
+  test("reports project_ambiguous when resolver finds multiple matches", async () => {
+    sessionRecord = {
+      id: "session-1",
+      userId: "user-1",
+      lifecycleVersion: 3,
+      sandboxState: { type: "vercel" },
+      repoOwner: "acme",
+      repoName: "app",
+    };
+    vercelToken = "tok_vercel_test";
+    vercelProjectResult = {
+      ok: false,
+      reason: "project_ambiguous",
+      message: "Found 2 Vercel projects for acme/app",
+    };
+
+    const { POST } = await routeModulePromise;
+
+    const request = new Request("http://localhost/api/sandbox", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "session-1",
+        sandboxType: "vercel",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.ok).toBe(true);
+
+    const data = (await response.json()) as {
+      vercelEnvResolution?: { status?: string; message?: string };
+    };
+
+    expect(data.vercelEnvResolution?.status).toBe("project_ambiguous");
+    expect(data.vercelEnvResolution?.message).toContain("Found 2");
 
     const config = connectConfigs.find(
       (c) => isConnectConfig(c) && c.state.type === "vercel",
@@ -324,6 +393,12 @@ describe("/api/sandbox lifecycle kicks", () => {
 
     const response = await POST(request);
     expect(response.ok).toBe(true);
+
+    const data = (await response.json()) as {
+      vercelEnvResolution?: { status?: string };
+    };
+
+    expect(data.vercelEnvResolution?.status).toBe("no_repo_context");
 
     const config = connectConfigs.find(
       (c) => isConnectConfig(c) && c.state.type === "vercel",
@@ -367,6 +442,12 @@ describe("/api/sandbox lifecycle kicks", () => {
 
     const response = await POST(request);
     expect(response.ok).toBe(true);
+
+    const data = (await response.json()) as {
+      vercelEnvResolution?: { status?: string };
+    };
+
+    expect(data.vercelEnvResolution?.status).toBe("skipped_reconnect");
 
     // On reconnect, the env should NOT contain Vercel vars
     // (reconnect path skips Vercel resolution because providedSandboxId is set,
