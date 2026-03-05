@@ -31,6 +31,7 @@ import {
 import { recordUsage } from "@/lib/db/usage";
 import { getRepoToken } from "@/lib/github/get-repo-token";
 import { getUserGitHubToken } from "@/lib/github/user-token";
+import { getUserVercelToken } from "@/lib/vercel/token";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { resolveModelSelection } from "@/lib/model-variants";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
@@ -265,9 +266,16 @@ export async function POST(req: Request) {
     githubToken = await getUserGitHubToken();
   }
 
+  // Fetch Vercel token so the CLI can be used inside the sandbox
+  const vercelToken = await getUserVercelToken(session.user.id);
+
   // Connect sandbox (handles all modes, handoff, restoration)
+  const chatEnv: Record<string, string> = {};
+  if (githubToken) chatEnv.GITHUB_TOKEN = githubToken;
+  if (vercelToken) chatEnv.VERCEL_TOKEN = vercelToken;
+
   const sandbox = await connectSandbox(sessionRecord.sandboxState, {
-    env: githubToken ? { GITHUB_TOKEN: githubToken } : undefined,
+    env: Object.keys(chatEnv).length > 0 ? chatEnv : undefined,
     ports: DEFAULT_SANDBOX_PORTS,
   });
 
