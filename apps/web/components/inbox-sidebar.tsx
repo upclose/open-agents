@@ -338,7 +338,7 @@ export function InboxSidebar({
   const [createTeamError, setCreateTeamError] = useState<string | null>(null);
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [inviteMemberOpen, setInviteMemberOpen] = useState(false);
-  const [inviteUsername, setInviteUsername] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
   const [inviteMemberError, setInviteMemberError] = useState<string | null>(
     null,
   );
@@ -601,7 +601,7 @@ export function InboxSidebar({
       return;
     }
 
-    setInviteUsername("");
+    setInviteEmail("");
     setInviteMemberError(null);
     setInviteMemberOpen(true);
   }, [canInviteMembers]);
@@ -611,9 +611,9 @@ export function InboxSidebar({
       return;
     }
 
-    const username = inviteUsername.trim();
-    if (!username) {
-      setInviteMemberError("Username is required");
+    const email = inviteEmail.trim();
+    if (!email) {
+      setInviteMemberError("Email address is required");
       return;
     }
 
@@ -624,7 +624,7 @@ export function InboxSidebar({
       const response = await fetch(`/api/teams/${currentTeam.id}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ email }),
       });
       const data = (await response.json()) as { error?: string };
 
@@ -633,7 +633,7 @@ export function InboxSidebar({
       }
 
       setInviteMemberOpen(false);
-      setInviteUsername("");
+      setInviteEmail("");
     } catch (error) {
       setInviteMemberError(
         error instanceof Error ? error.message : "Failed to invite member",
@@ -641,7 +641,7 @@ export function InboxSidebar({
     } finally {
       setIsInvitingMember(false);
     }
-  }, [currentTeam, inviteUsername]);
+  }, [currentTeam, inviteEmail]);
 
   const closeRenameDialog = useCallback(() => {
     setRenameDialogSession(null);
@@ -1061,7 +1061,7 @@ export function InboxSidebar({
           setInviteMemberOpen(open);
           if (!open) {
             setInviteMemberError(null);
-            setInviteUsername("");
+            setInviteEmail("");
           }
         }}
       >
@@ -1069,7 +1069,7 @@ export function InboxSidebar({
           <DialogHeader>
             <DialogTitle>Invite member</DialogTitle>
             <DialogDescription>
-              Add a teammate by username to {currentTeam?.name ?? "this team"}.
+              Add a teammate by email to {currentTeam?.name ?? "this team"}.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -1080,9 +1080,9 @@ export function InboxSidebar({
             className="space-y-4"
           >
             <Input
-              value={inviteUsername}
-              onChange={(e) => setInviteUsername(e.target.value)}
-              placeholder="Username"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="Email address"
               maxLength={80}
               disabled={isInvitingMember}
             />
@@ -1100,9 +1100,7 @@ export function InboxSidebar({
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  isInvitingMember || inviteUsername.trim().length === 0
-                }
+                disabled={isInvitingMember || inviteEmail.trim().length === 0}
               >
                 {isInvitingMember ? "Inviting..." : "Invite"}
               </Button>

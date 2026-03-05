@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db } from "./client";
 import { users } from "./schema";
@@ -24,6 +24,23 @@ export async function getUserByUsername(username: string) {
 
   return db.query.users.findFirst({
     where: eq(users.username, trimmedUsername),
+    columns: {
+      id: true,
+      username: true,
+      email: true,
+      name: true,
+    },
+  });
+}
+
+export async function getUserByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  return db.query.users.findFirst({
+    where: sql`lower(${users.email}) = ${normalizedEmail}`,
     columns: {
       id: true,
       username: true,

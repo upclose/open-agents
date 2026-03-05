@@ -1,18 +1,23 @@
 import { addUserToTeam, getTeamById, getTeamMembership } from "@/lib/db/teams";
-import { getUserByUsername } from "@/lib/db/users";
+import { getUserByEmail } from "@/lib/db/users";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 interface InviteTeamMemberRequest {
-  username?: string;
+  email?: string;
 }
 
 type RouteContext = {
   params: Promise<{ teamId: string }>;
 };
 
-function normalizeUsername(rawUsername: string | undefined): string | null {
-  const trimmedUsername = rawUsername?.trim();
-  return trimmedUsername ? trimmedUsername : null;
+function normalizeEmail(rawEmail: string | undefined): string | null {
+  const trimmedEmail = rawEmail?.trim().toLowerCase();
+  if (!trimmedEmail) {
+    return null;
+  }
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailPattern.test(trimmedEmail) ? trimmedEmail : null;
 }
 
 export async function POST(req: Request, context: RouteContext) {
@@ -60,17 +65,20 @@ export async function POST(req: Request, context: RouteContext) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const username = normalizeUsername(body.username);
-  if (!username) {
-    return Response.json({ error: "username is required" }, { status: 400 });
+  const email = normalizeEmail(body.email);
+  if (!email) {
+    return Response.json(
+      { error: "A valid email address is required" },
+      { status: 400 },
+    );
   }
 
-  const targetUser = await getUserByUsername(username);
+  const targetUser = await getUserByEmail(email);
   if (!targetUser) {
     return Response.json(
       {
         error:
-          "User not found. Ask them to sign in at least once before inviting.",
+          "No user found for that email. Ask them to sign in at least once before inviting.",
       },
       { status: 404 },
     );
@@ -93,6 +101,7 @@ export async function POST(req: Request, context: RouteContext) {
     member: {
       userId: targetUser.id,
       username: targetUser.username,
+      email: targetUser.email ?? email,
       role: result.membership.role,
     },
     alreadyMember: !result.created,
