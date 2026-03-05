@@ -4,11 +4,13 @@ import { getGitHubAccount } from "@/lib/db/accounts";
 import { getInstallationsByUserId } from "@/lib/db/installations";
 import { listTeamsForUser, resolveActiveTeamIdForUser } from "@/lib/db/teams";
 import { userExists } from "@/lib/db/users";
+import { encryptJWE } from "@/lib/jwe/encrypt";
 import { SESSION_COOKIE_NAME } from "@/lib/session/constants";
 import { getSessionFromReq } from "@/lib/session/server";
 import type { SessionUserInfo } from "@/lib/session/types";
 
 const UNAUTHENTICATED: SessionUserInfo = { user: undefined };
+const SESSION_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromReq(req);
@@ -41,6 +43,25 @@ export async function GET(req: NextRequest) {
     }),
     listTeamsForUser(session.user.id),
   ]);
+
+  if (activeTeamId !== session.activeTeamId) {
+    const sessionToken = await encryptJWE(
+      {
+        ...session,
+        activeTeamId,
+      },
+      "1y",
+    );
+
+    const store = await cookies();
+    store.set(SESSION_COOKIE_NAME, sessionToken, {
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
+  }
 
   const hasGitHubAccount = ghAccount !== null;
   const hasGitHubInstallations = installations.length > 0;

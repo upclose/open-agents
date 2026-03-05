@@ -14,7 +14,13 @@ export default async function SessionPage({ params }: SessionPageProps) {
     redirect("/");
   }
 
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     notFound();
   }

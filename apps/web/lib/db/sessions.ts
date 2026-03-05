@@ -80,9 +80,21 @@ export function isSessionOwner(
   return sessionRecord.userId === userId;
 }
 
-export async function getSessionByIdForUser(sessionId: string, userId: string) {
+interface GetSessionByIdForUserOptions {
+  teamId?: string;
+}
+
+export async function getSessionByIdForUser(
+  sessionId: string,
+  userId: string,
+  options?: GetSessionByIdForUserOptions,
+) {
   const sessionRecord = await getSessionById(sessionId);
   if (!sessionRecord) {
+    return null;
+  }
+
+  if (options?.teamId && sessionRecord.teamId !== options.teamId) {
     return null;
   }
 

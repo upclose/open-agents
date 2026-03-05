@@ -215,7 +215,9 @@ export async function POST(req: Request) {
 
   // 3. Verify session + chat ownership
   const [sessionRecord, chat] = await Promise.all([
-    getSessionByIdForUser(sessionId, session.user.id),
+    getSessionByIdForUser(sessionId, session.user.id, {
+      teamId: session.activeTeamId,
+    }),
     getChatById(chatId),
   ]);
 

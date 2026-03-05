@@ -84,7 +84,13 @@ export default async function SessionChatPage({
     redirect("/");
   }
 
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     notFound();
   }

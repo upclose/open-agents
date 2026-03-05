@@ -62,7 +62,13 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({ error: "Missing sessionId" }, { status: 400 });
   }
 
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

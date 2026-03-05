@@ -19,7 +19,13 @@ export async function GET(_req: Request, context: RouteContext) {
   }
 
   const { sessionId } = await context.params;
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -38,7 +44,13 @@ export async function POST(req: Request, context: RouteContext) {
   }
 
   const { sessionId } = await context.params;
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

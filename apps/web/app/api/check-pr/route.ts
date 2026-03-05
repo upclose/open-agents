@@ -36,7 +36,13 @@ export async function POST(req: Request) {
     return Response.json({ error: "sessionId is required" }, { status: 400 });
   }
 
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

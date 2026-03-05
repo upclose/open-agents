@@ -36,6 +36,7 @@ export async function GET(
   const existingSession = await getSessionByIdForUser(
     sessionId,
     session.user.id,
+    { teamId: session.activeTeamId },
   );
 
   if (!existingSession) {
@@ -58,6 +59,7 @@ export async function PATCH(
   const existingSession = await getSessionByIdForUser(
     sessionId,
     session.user.id,
+    { teamId: session.activeTeamId },
   );
 
   if (!existingSession) {
@@ -192,6 +194,7 @@ export async function DELETE(
   const existingSession = await getSessionByIdForUser(
     sessionId,
     session.user.id,
+    { teamId: session.activeTeamId },
   );
 
   if (!existingSession) {

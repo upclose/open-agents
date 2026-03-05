@@ -16,6 +16,7 @@ async function validateOwnedChat(
   sessionId: string,
   chatId: string,
   userId: string,
+  activeTeamId: string | undefined,
 ): Promise<
   | { ok: true }
   | {
@@ -23,7 +24,9 @@ async function validateOwnedChat(
       response: Response;
     }
 > {
-  const sessionRecord = await getSessionByIdForUser(sessionId, userId);
+  const sessionRecord = await getSessionByIdForUser(sessionId, userId, {
+    teamId: activeTeamId,
+  });
   if (!sessionRecord) {
     return {
       ok: false,
@@ -57,6 +60,7 @@ export async function GET(_req: Request, context: RouteContext) {
     sessionId,
     chatId,
     session.user.id,
+    session.activeTeamId,
   );
   if (!validation.ok) {
     return validation.response;
@@ -81,6 +85,7 @@ export async function POST(_req: Request, context: RouteContext) {
     sessionId,
     chatId,
     session.user.id,
+    session.activeTeamId,
   );
   if (!validation.ok) {
     return validation.response;
@@ -118,6 +123,7 @@ export async function DELETE(_req: Request, context: RouteContext) {
     sessionId,
     chatId,
     session.user.id,
+    session.activeTeamId,
   );
   if (!validation.ok) {
     return validation.response;

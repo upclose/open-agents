@@ -49,7 +49,13 @@ export async function POST(req: Request) {
   }
 
   // Verify session ownership
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -118,7 +124,13 @@ export async function PUT(req: Request) {
   }
 
   // Verify session ownership and get snapshot URL
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

@@ -101,7 +101,9 @@ export async function POST(req: Request) {
   // Validate session ownership
   let sessionRecord;
   if (sessionId) {
-    sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+    sessionRecord = await getSessionByIdForUser(sessionId, session.user.id, {
+      teamId: session.activeTeamId,
+    });
     if (!sessionRecord) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -330,7 +332,13 @@ export async function DELETE(req: Request) {
 
   const { sessionId } = body as { sessionId: string };
 
-  const sessionRecord = await getSessionByIdForUser(sessionId, session.user.id);
+  const sessionRecord = await getSessionByIdForUser(
+    sessionId,
+    session.user.id,
+    {
+      teamId: session.activeTeamId,
+    },
+  );
   if (!sessionRecord) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

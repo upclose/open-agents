@@ -29,6 +29,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const sessionRecord = await getSessionByIdForUser(
     chat.sessionId,
     session.user.id,
+    { teamId: session.activeTeamId },
   );
   if (!sessionRecord) {
     return new Response("Forbidden", { status: 403 });
