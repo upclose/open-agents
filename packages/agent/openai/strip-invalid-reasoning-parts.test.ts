@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
 import { stripInvalidOpenAIReasoningParts } from "./strip-invalid-reasoning-parts";
 
-const reportedTranscript = [
+const reportedTranscript: ModelMessage[] = [
   {
     role: "assistant",
     content: [
@@ -104,19 +104,17 @@ I need to respond to the user asking if I'm sure about something. It's important
     role: "user",
     content: [{ type: "text", text: "hi" }],
   },
-] as unknown as ModelMessage[];
+];
 
 describe("stripInvalidOpenAIReasoningParts", () => {
   test("strips only the reported GPT-5 reasoning block that is missing encrypted content", () => {
-    const messages = structuredClone(reportedTranscript) as ModelMessage[];
-    const expectedMessages = structuredClone(
-      reportedTranscript,
-    ) as ModelMessage[];
+    const messages = structuredClone(reportedTranscript);
+    const expectedMessages = structuredClone(reportedTranscript);
 
     expectedMessages[4] = {
       role: "assistant",
       content: [],
-    } as ModelMessage;
+    };
 
     const result = stripInvalidOpenAIReasoningParts(
       messages,
