@@ -111,74 +111,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function logUIReasoningBlocks(
-  messages: WebAgentUIMessage[],
-  context: { sessionId: string; chatId: string; stage: string },
-): void {
-  if (!ENABLE_REASONING_DEBUG_LOGS) {
-    return;
-  }
-
-  const reasoningBlocks: Array<Record<string, unknown>> = [];
-
-  for (
-    let messageIndex = 0;
-    messageIndex < messages.length;
-    messageIndex += 1
-  ) {
-    const message = messages[messageIndex];
-    if (!message || message.role !== "assistant") {
-      continue;
-    }
-
-    for (let partIndex = 0; partIndex < message.parts.length; partIndex += 1) {
-      const part = message.parts[partIndex];
-      if (part.type !== "reasoning") {
-        continue;
-      }
-
-      const metadata = (part as { providerMetadata?: unknown })
-        .providerMetadata;
-      const openaiMetadata =
-        isRecord(metadata) && isRecord(metadata.openai)
-          ? metadata.openai
-          : null;
-
-      const itemId =
-        openaiMetadata && typeof openaiMetadata.itemId === "string"
-          ? openaiMetadata.itemId
-          : null;
-      const encryptedContent =
-        openaiMetadata &&
-        typeof openaiMetadata.reasoningEncryptedContent === "string"
-          ? openaiMetadata.reasoningEncryptedContent
-          : null;
-
-      reasoningBlocks.push({
-        messageIndex,
-        partIndex,
-        itemId,
-        reasoningTextLength: part.text.length,
-        encryptedContentLength: encryptedContent?.length ?? null,
-      });
-    }
-  }
-
-  console.log(
-    "[reasoning-debug][chat][ui]",
-    JSON.stringify(
-      {
-        ...context,
-        messageCount: messages.length,
-        reasoningBlockCount: reasoningBlocks.length,
-        reasoningBlocks,
-      },
-      null,
-      2,
-    ),
-  );
-}
-
 function logModelReasoningBlocks(
   messages: ModelMessage[],
   context: { sessionId: string; chatId: string; stage: string },
@@ -395,12 +327,6 @@ export async function POST(req: Request) {
     ...buildActiveLifecycleUpdate(sessionRecord.sandboxState, {
       activityAt: requestStartedAt,
     }),
-  });
-
-  logUIReasoningBlocks(messages, {
-    sessionId,
-    chatId,
-    stage: "incoming-request",
   });
 
   const modelMessages = await convertToModelMessages(messages, {
