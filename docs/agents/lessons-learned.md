@@ -13,6 +13,9 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - AI SDK stream handles may return `PromiseLike` values (not full `Promise`), so avoid methods like `.finally()` and use `then`/`catch` patterns that work with `PromiseLike`.
 - After schema edits, review generated Drizzle migrations for unrelated schema drift changes before committing (for example defaults on untouched columns), since `drizzle-kit generate` can include those alongside intended changes.
 - `bunx @vercel/config validate` executes the CLI under Node via its shebang and cannot parse TypeScript-style `vercel.ts` imports; use `bunx --bun @vercel/config validate` (or `bun node_modules/@vercel/config/dist/cli.js validate`) for reliable local validation.
+- In AI SDK ToolLoopAgent `prepareStep`, override the system prompt with the `system` field, not `instructions`; `instructions` is only consumed by agent settings/prepareCall and is ignored at per-step runtime.
+- Background approval mode can be valid even when sandbox config lacks `source.branch`/`source.newBranch` (for example some restored stateless states); system prompt construction must degrade gracefully instead of throwing on missing branch metadata.
+- Agent call options must remain serializable; pass runtime sandbox prompt hints (for example host and per-port preview URLs) via `sandboxConfig.runtimeHints` instead of passing live sandbox instances.
 
 ## Next.js
 
@@ -32,6 +35,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - Hybrid post-handoff prompt metadata uses delegated Vercel `environmentDetails`; never hardcode host resolution to port `80` or prompts can show `Sandbox host: undefined` even when declared preview ports (for example `3000`) are routable.
 - Hybrid/Vercel handoff prompt metadata should derive host/preview URLs from Vercel SDK `routes` (live route data), not only from locally passed `ports`; reconnect paths may omit `ports` even though routes are available.
 - Vercel sandbox creation has a hard timeout limit of `18_000_000ms`; if you add an internal timeout buffer before calling the SDK, clamp proactive timeout so `timeout + buffer` never exceeds that API limit.
+- Stateless Vercel reconnect adapters need a metadata refresh (`GET /v1/sandboxes/:id`) to populate routes; without routes, prompts lose sandbox host/dev-server URL hints and command env injection cannot set `SANDBOX_HOST` or `SANDBOX_URL_<PORT>`.
 - In serverless environments, lifecycle checks that only run inline during request handlers are not durable; long-gap sandbox lifecycle actions must be scheduled with a durable workflow run (`start(...)` + `sleep(...)`) so they execute without a connected client.
 - Vercel `snapshot()` may return `422 sandbox_snapshotting` when another snapshot is already in progress; lifecycle code should treat this as an idempotent/in-progress condition and reconcile state instead of marking lifecycle as failed.
 - The reconnect API can return `expired` when a sandbox has already stopped; client reconnection state should treat `expired` like `no_sandbox` so restore UX does not get stuck in a generic failure path.
