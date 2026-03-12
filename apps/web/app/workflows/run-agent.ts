@@ -1,49 +1,24 @@
-import { sumLanguageModelUsage } from "@open-harness/agent";
-import {
-  convertToModelMessages,
-  type FinishReason,
-  type LanguageModelUsage,
-  type ModelMessage,
-  type UIMessageChunk,
-} from "ai";
+import { type LanguageModelUsage, type UIMessageChunk } from "ai";
 import { getWorkflowMetadata, getWritable } from "workflow";
-import { webAgent } from "@/app/config";
 import type { WebAgentUIMessage } from "@/app/types";
 import { shouldContinueWorkflowAfterStep } from "@/lib/chat/should-auto-submit";
 import {
-  getLatestAssistantMessage,
-  getResponseMessageId,
-  getSandboxState,
-  type RunAgentWorkflowOptions,
-  type RunAgentWorkflowResult,
-  resolveStepContext,
-  type StepContext,
-  withLatestAssistantMessage,
-} from "./run-agent-context";
-import {
   closeStream,
   finalizeRun,
-  isAbortError,
+  runAgentStep,
   sendFinish,
   sendStart,
-  startStopMonitor,
-} from "./run-agent-finalize";
+  toModelMessages,
+} from "./run-agent-steps";
+import type {
+  RunAgentStepResult,
+  RunAgentWorkflowOptions,
+  RunAgentWorkflowResult,
+} from "./run-agent-types";
 
-export type { RunAgentWorkflowResult } from "./run-agent-context";
+export type { RunAgentWorkflowResult } from "./run-agent-types";
 
 const MAX_AGENT_ITERATIONS = 200;
-
-type Writable = WritableStream<UIMessageChunk>;
-
-interface RunAgentStepResult {
-  responseMessages: ModelMessage[];
-  finishReason: FinishReason;
-  assistantMessage?: WebAgentUIMessage;
-  stepWasAborted: boolean;
-  usage?: LanguageModelUsage;
-  mainModelId: string;
-  context?: StepContext;
-}
 
 export async function runAgent(
   messages: WebAgentUIMessage[],
@@ -59,7 +34,7 @@ export async function runAgent(
   let modelMessages = await toModelMessages(messages);
   let latestAssistantMessage = getLatestAssistantMessage(messages);
   let totalUsage: LanguageModelUsage | undefined;
-  let latestContext: StepContext | undefined;
+  let latestSandboxState: RunAgentStepResult["latestSandboxState"];
   let mainModelId = "anthropic/claude-haiku-4.5";
   let wasAborted = false;
   let completedNaturally = false;
@@ -80,7 +55,7 @@ export async function runAgent(
     latestAssistantMessage =
       stepResult.assistantMessage ?? latestAssistantMessage;
     totalUsage = sumLanguageModelUsage(totalUsage, stepResult.usage);
-    latestContext = stepResult.context ?? latestContext;
+    latestSandboxState = stepResult.latestSandboxState ?? latestSandboxState;
     mainModelId = stepResult.mainModelId;
     wasAborted = wasAborted || stepResult.stepWasAborted;
     modelMessages = [...modelMessages, ...stepResult.responseMessages];
@@ -101,9 +76,7 @@ export async function runAgent(
     options,
     workflowRunId,
     latestAssistantMessage,
-    latestSandboxState: latestContext
-      ? getSandboxState(latestContext.sandbox)
-      : undefined,
+    latestSandboxState,
     totalUsage,
     mainModelId,
     wasAborted,
@@ -119,128 +92,83 @@ export async function runAgent(
   };
 }
 
-async function toModelMessages(messages: WebAgentUIMessage[]) {
-  "use step";
-
-  return convertToModelMessages(messages, {
-    ignoreIncompleteToolCalls: true,
-    tools: webAgent.tools,
-  });
+function getLatestAssistantMessage(messages: WebAgentUIMessage[]) {
+  const latestMessage = messages[messages.length - 1];
+  return latestMessage?.role === "assistant" ? latestMessage : undefined;
 }
 
-async function runAgentStep(
-  messages: ModelMessage[],
-  originalMessages: WebAgentUIMessage[],
-  latestAssistantMessage: WebAgentUIMessage | undefined,
-  writable: Writable,
-  options: RunAgentWorkflowOptions,
+function getResponseMessageId(
+  messages: WebAgentUIMessage[],
   workflowRunId: string,
-  responseMessageId: string,
-): Promise<RunAgentStepResult> {
-  "use step";
+) {
+  const latestAssistantMessage = getLatestAssistantMessage(messages);
+  return latestAssistantMessage?.id ?? workflowRunId;
+}
 
-  const abortController = new AbortController();
-  const stopMonitor = startStopMonitor(workflowRunId, abortController);
-
-  try {
-    const context = await resolveStepContext(options, originalMessages);
-
-    const result = await webAgent.stream({
-      messages,
-      options: {
-        sandbox: context.sandbox,
-        model: context.model,
-        subagentModel: context.subagentModel,
-        context: context.compactionContext,
-        approval: {
-          type: "interactive",
-          autoApprove: "all",
-          sessionRules: [],
-        },
-        type: "durable",
-        ...(context.skills && context.skills.length > 0
-          ? { skills: context.skills }
-          : {}),
-      },
-      abortSignal: abortController.signal,
-    });
-
-    const streamOriginalMessages = withLatestAssistantMessage(
-      originalMessages,
-      latestAssistantMessage,
-    );
-    let assistantMessage: WebAgentUIMessage | undefined;
-    let lastStepUsage: LanguageModelUsage | undefined;
-    let stepUsage: LanguageModelUsage | undefined;
-
-    const stream = result.toUIMessageStream<WebAgentUIMessage>({
-      sendStart: false,
-      sendFinish: false,
-      originalMessages: streamOriginalMessages,
-      generateMessageId: () => responseMessageId,
-      messageMetadata: ({ part }) => {
-        if (part.type === "finish-step") {
-          lastStepUsage = part.usage;
-          return { lastStepUsage, totalMessageUsage: undefined };
-        }
-
-        if (part.type === "finish") {
-          stepUsage = part.totalUsage;
-          return { lastStepUsage, totalMessageUsage: part.totalUsage };
-        }
-
-        return undefined;
-      },
-      onFinish: ({ responseMessage }) => {
-        assistantMessage = responseMessage;
-      },
-    });
-
-    const reader = stream.getReader();
-    const writer = writable.getWriter();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-        await writer.write(value);
-      }
-    } finally {
-      reader.releaseLock();
-      writer.releaseLock();
-    }
-
-    const [response, finishReason, resultUsage] = await Promise.all([
-      result.response,
-      result.finishReason,
-      result.usage,
-    ]);
-
-    return {
-      responseMessages: response.messages,
-      finishReason,
-      assistantMessage,
-      stepWasAborted: false,
-      usage: stepUsage ?? resultUsage,
-      mainModelId: context.mainModelId,
-      context,
-    };
-  } catch (error) {
-    if (isAbortError(error)) {
-      return {
-        responseMessages: [],
-        finishReason: "stop",
-        assistantMessage: undefined,
-        stepWasAborted: true,
-        mainModelId: "anthropic/claude-haiku-4.5",
-      };
-    }
-
-    throw error;
-  } finally {
-    stopMonitor.stop();
-    await stopMonitor.done;
+function addTokenCounts(
+  tokenCount1: number | undefined,
+  tokenCount2: number | undefined,
+): number | undefined {
+  if (tokenCount1 == null && tokenCount2 == null) {
+    return undefined;
   }
+
+  return (tokenCount1 ?? 0) + (tokenCount2 ?? 0);
+}
+
+function addLanguageModelUsage(
+  usage1: LanguageModelUsage,
+  usage2: LanguageModelUsage,
+): LanguageModelUsage {
+  return {
+    inputTokens: addTokenCounts(usage1.inputTokens, usage2.inputTokens),
+    inputTokenDetails: {
+      noCacheTokens: addTokenCounts(
+        usage1.inputTokenDetails?.noCacheTokens,
+        usage2.inputTokenDetails?.noCacheTokens,
+      ),
+      cacheReadTokens: addTokenCounts(
+        usage1.inputTokenDetails?.cacheReadTokens,
+        usage2.inputTokenDetails?.cacheReadTokens,
+      ),
+      cacheWriteTokens: addTokenCounts(
+        usage1.inputTokenDetails?.cacheWriteTokens,
+        usage2.inputTokenDetails?.cacheWriteTokens,
+      ),
+    },
+    outputTokens: addTokenCounts(usage1.outputTokens, usage2.outputTokens),
+    outputTokenDetails: {
+      textTokens: addTokenCounts(
+        usage1.outputTokenDetails?.textTokens,
+        usage2.outputTokenDetails?.textTokens,
+      ),
+      reasoningTokens: addTokenCounts(
+        usage1.outputTokenDetails?.reasoningTokens,
+        usage2.outputTokenDetails?.reasoningTokens,
+      ),
+    },
+    totalTokens: addTokenCounts(usage1.totalTokens, usage2.totalTokens),
+    reasoningTokens: addTokenCounts(
+      usage1.reasoningTokens,
+      usage2.reasoningTokens,
+    ),
+    cachedInputTokens: addTokenCounts(
+      usage1.cachedInputTokens,
+      usage2.cachedInputTokens,
+    ),
+  };
+}
+
+function sumLanguageModelUsage(
+  usage1: LanguageModelUsage | undefined,
+  usage2: LanguageModelUsage | undefined,
+): LanguageModelUsage | undefined {
+  if (!usage1) {
+    return usage2;
+  }
+  if (!usage2) {
+    return usage1;
+  }
+
+  return addLanguageModelUsage(usage1, usage2);
 }

@@ -11,28 +11,14 @@ import { DEFAULT_MODEL_ID } from "@/lib/models";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getCachedSkills, setCachedSkills } from "@/lib/skills-cache";
+import type {
+  ChatCompactionContextPayload,
+  RunAgentWorkflowOptions,
+} from "./run-agent-types";
 
 const DEFAULT_CONTEXT_LIMIT = 200_000;
 
 type DiscoveredSkills = Awaited<ReturnType<typeof discoverSkills>>;
-
-export interface ChatCompactionContextPayload {
-  contextLimit?: number;
-  lastInputTokens?: number;
-}
-
-export interface RunAgentWorkflowOptions {
-  sessionId: string;
-  chatId: string;
-  userId: string;
-  context?: ChatCompactionContextPayload;
-}
-
-export interface RunAgentWorkflowResult {
-  wasAborted: boolean;
-  completedNaturally: boolean;
-  stillOwnsRun: boolean;
-}
 
 export interface StepContext {
   model: LanguageModel;

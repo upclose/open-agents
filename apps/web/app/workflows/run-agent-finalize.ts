@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/sessions";
 import { recordUsage } from "@/lib/db/usage";
 import { buildActiveLifecycleUpdate } from "@/lib/sandbox/lifecycle";
-import type { RunAgentWorkflowOptions } from "./run-agent-context";
+import type { RunAgentWorkflowOptions } from "./run-agent-types";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;

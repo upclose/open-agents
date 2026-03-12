@@ -23,6 +23,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - In this codebase's Next.js version, `revalidateTag` must be called with a second argument (for example `{ expire: 0 }`); single-argument calls fail typecheck.
 - For Workflow DevKit discovery in Next.js, ensure workflow files live in scanned directories (for this app, `app/`), otherwise manifests can show steps but `0 workflows` and `start()` will not run durable workflows.
 - Server-side optimistic chat route lookup must allow realistic persistence latency (multi-second retry window), otherwise `/sessions/[sessionId]/chats/[chatId]` can redirect away before chat creation finishes.
+- Workflow DevKit entrypoint files must keep Node-dependent agent, sandbox, and DB code behind separate step files or step-local dynamic imports; importing those modules from the workflow file pulls them into the sandbox bundle and causes `node-js-module-in-workflow` failures during dev/build discovery.
 
 ## Sandbox Lifecycle
 
