@@ -12,7 +12,17 @@ const toolDescriptions: Record<string, string> = {
 export interface Skill {
   name: string;
   description: string;
+  location?: string;
   userInvocable?: boolean;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function formatSkillsForPrompt(skills: Skill[]): string {
@@ -20,17 +30,45 @@ function formatSkillsForPrompt(skills: Skill[]): string {
     return "";
   }
 
+  const hasLocations = skills.some(
+    (skill) =>
+      typeof skill.location === "string" && skill.location.trim().length > 0,
+  );
+
   const formatted = skills
     .map((skill) => {
-      const suffix =
-        skill.userInvocable === false
-          ? " (model-only, not slash-invocable)"
-          : "";
-      return `- ${skill.name}: ${skill.description}${suffix}`;
+      const lines = [
+        "  <skill>",
+        `    <name>${escapeXml(skill.name)}</name>`,
+        `    <description>${escapeXml(skill.description)}</description>`,
+      ];
+
+      if (
+        typeof skill.location === "string" &&
+        skill.location.trim().length > 0
+      ) {
+        lines.push(`    <location>${escapeXml(skill.location)}</location>`);
+      }
+
+      if (skill.userInvocable === false) {
+        lines.push("    <user_invocable>false</user_invocable>");
+      }
+
+      lines.push("  </skill>");
+
+      return lines.join("\n");
     })
     .join("\n");
 
-  return `\n\n## Skills\n\n${formatted}\n`;
+  const guidance = hasLocations
+    ? [
+        "The following skills provide specialized instructions for specific tasks.",
+        "When a skill includes <location>, use the read tool to inspect that file when the task matches its description.",
+        "When a skill file references a relative path, resolve it against the skill directory (the parent directory of <location>).",
+      ].join("\n")
+    : "The following skills provide specialized instructions for specific tasks.";
+
+  return `\n\n## Skills\n\n${guidance}\n\n<available_skills>\n${formatted}\n</available_skills>\n`;
 }
 
 export interface BuildSystemPromptOptions {
@@ -48,7 +86,7 @@ export interface BuildSystemPromptOptions {
   cwd?: string;
   /** Pre-loaded context files. */
   contextFiles?: Array<{ path: string; content: string }>;
-  /** Pre-loaded skills. */
+  /** Pre-loaded skills. Include location to let the agent inspect skill files. */
   skills?: Skill[];
 }
 
