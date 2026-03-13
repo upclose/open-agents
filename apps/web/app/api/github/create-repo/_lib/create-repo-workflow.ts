@@ -107,7 +107,11 @@ export async function runCreateRepoWorkflow({
     );
 
   // 8. Initialize git if not already initialized
-  const gitCheckResult = await sandbox.exec("git rev-parse --git-dir", cwd, 5000);
+  const gitCheckResult = await sandbox.exec(
+    "git rev-parse --git-dir",
+    cwd,
+    5000,
+  );
   if (!gitCheckResult.success) {
     // Initialize git
     const initResult = await sandbox.exec("git init", cwd, 10000);
@@ -125,14 +129,23 @@ export async function runCreateRepoWorkflow({
     githubAccount?.externalUserId && githubAccount.username
       ? `${githubAccount.externalUserId}+${githubAccount.username}@users.noreply.github.com`
       : undefined;
-  const userName = sessionUser.name ?? githubAccount?.username ?? sessionUser.username;
+  const userName =
+    sessionUser.name ?? githubAccount?.username ?? sessionUser.username;
   const userEmail =
     githubNoreplyEmail ??
     sessionUser.email ??
     `${sessionUser.username}@users.noreply.github.com`;
 
-  await sandbox.exec(`git config user.name ${escapeShellArg(userName)}`, cwd, 5000);
-  await sandbox.exec(`git config user.email ${escapeShellArg(userEmail)}`, cwd, 5000);
+  await sandbox.exec(
+    `git config user.name ${escapeShellArg(userName)}`,
+    cwd,
+    5000,
+  );
+  await sandbox.exec(
+    `git config user.email ${escapeShellArg(userEmail)}`,
+    cwd,
+    5000,
+  );
 
   // 10. Add remote origin with authentication
   // First remove existing origin if any
@@ -213,7 +226,11 @@ Respond with ONLY the commit message, nothing else.`,
   // attributed as committer when pushing via the installation token, and adding
   // the trailer causes it to appear twice on squash-merged PRs (3 authors).
   const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-  const commitResult = await sandbox.exec(`git commit -m '${escapedMessage}'`, cwd, 10000);
+  const commitResult = await sandbox.exec(
+    `git commit -m '${escapedMessage}'`,
+    cwd,
+    10000,
+  );
   if (!commitResult.success) {
     return {
       ok: false,

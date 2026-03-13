@@ -71,7 +71,10 @@ describe("diff utils", () => {
     const parsed = parseStats(output);
 
     expect(parsed.get("src/app.ts")).toEqual({ additions: 12, deletions: 3 });
-    expect(parsed.get("docs/new file.md")).toEqual({ additions: 1, deletions: 0 });
+    expect(parsed.get("docs/new file.md")).toEqual({
+      additions: 1,
+      deletions: 0,
+    });
   });
 
   test("splitDiffByFile splits mixed quoted and unquoted git diff blocks", () => {
@@ -96,9 +99,7 @@ describe("diff utils", () => {
 
     expect(split.size).toBe(2);
     expect(split.get("src/a.ts")).toContain("diff --git a/src/a.ts b/src/a.ts");
-    expect(split.get("docs/new name.md")).toContain(
-      '+++ "b/docs/new name.md"',
-    );
+    expect(split.get("docs/new name.md")).toContain('+++ "b/docs/new name.md"');
   });
 
   test("buildUntrackedDiffFile returns null for unreadable content", () => {

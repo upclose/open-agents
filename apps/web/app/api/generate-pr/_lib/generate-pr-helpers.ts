@@ -1,6 +1,9 @@
 import { getChatMessages, getChatsBySessionId } from "@/lib/db/sessions";
 
-export function generateBranchName(username: string, name?: string | null): string {
+export function generateBranchName(
+  username: string,
+  name?: string | null,
+): string {
   let initials = "nb";
   if (name) {
     initials =
@@ -82,7 +85,9 @@ export function redactGitHubToken(text: string): string {
   );
 }
 
-export function extractGitHubOwnerFromRemoteUrl(remoteUrl: string): string | null {
+export function extractGitHubOwnerFromRemoteUrl(
+  remoteUrl: string,
+): string | null {
   const trimmedRemoteUrl = remoteUrl.trim();
   if (!trimmedRemoteUrl) {
     return null;
@@ -202,7 +207,9 @@ export async function ensureForkExists({
  * Tool calls and tool results are intentionally excluded to keep context
  * focused on the human–AI conversation.
  */
-export async function getConversationContext(sessionId: string): Promise<string> {
+export async function getConversationContext(
+  sessionId: string,
+): Promise<string> {
   const chats = await getChatsBySessionId(sessionId);
   if (chats.length === 0) return "";
 

@@ -17,14 +17,12 @@ mock.module("@/lib/db/sessions", () => ({
 const helpersModulePromise = import("./generate-pr-helpers");
 const originalFetch = globalThis.fetch;
 
-function createMockResponse(
-  init: {
-    ok: boolean;
-    status?: number;
-    jsonData?: unknown;
-    textData?: string;
-  },
-): Response {
+function createMockResponse(init: {
+  ok: boolean;
+  status?: number;
+  jsonData?: unknown;
+  textData?: string;
+}): Response {
   return {
     ok: init.ok,
     status: init.status ?? (init.ok ? 200 : 500),
@@ -68,7 +66,9 @@ describe("generate-pr helpers", () => {
 
     expect(isPermissionPushError("Permission denied to repository")).toBe(true);
     expect(
-      isRetryableForkPushError("remote: Repository not found while propagating"),
+      isRetryableForkPushError(
+        "remote: Repository not found while propagating",
+      ),
     ).toBe(true);
     expect(isPermissionPushError("all good")).toBe(false);
     expect(isRetryableForkPushError("all good")).toBe(false);
@@ -120,7 +120,9 @@ describe("generate-pr helpers", () => {
 
     expect(result).toEqual({ success: true, forkRepoName: "widgets-fork" });
     expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]?.url).toBe("https://api.github.com/repos/alice/widgets");
+    expect(fetchCalls[0]?.url).toBe(
+      "https://api.github.com/repos/alice/widgets",
+    );
   });
 
   test("ensureForkExists returns actionable error when fork creation is denied", async () => {

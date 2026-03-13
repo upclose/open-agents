@@ -35,7 +35,9 @@ export type ReconnectResponse = {
   };
 };
 
-function buildLifecyclePayload(sessionRecord: SessionRecord | null | undefined) {
+function buildLifecyclePayload(
+  sessionRecord: SessionRecord | null | undefined,
+) {
   return {
     serverTime: Date.now(),
     state: sessionRecord?.lifecycleState ?? null,
