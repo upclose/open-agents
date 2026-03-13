@@ -63,7 +63,7 @@ Completion notes:
   - `bun test 'apps/web/app/api/sessions/[sessionId]/chats/[chatId]/share/route.test.ts'` ✅
   - `bun run build --filter=web` ✅
 
-## Phase 2 — Session/Sandbox utility routes (planned)
+## Phase 2 — Session/Sandbox utility routes (in progress)
 Candidate routes:
 - `apps/web/app/api/sessions/[sessionId]/files/route.ts`
 - `apps/web/app/api/sessions/[sessionId]/skills/route.ts`
@@ -77,9 +77,29 @@ Candidate routes:
 - `apps/web/app/api/git-status/route.ts`
 
 Checklist:
-- [ ] Extract shared "owned session" + optional sandbox guard helper(s)
+- [x] Extract shared "owned session" + optional sandbox guard helper(s)
 - [ ] Migrate routes incrementally
 - [ ] Verify with scripts
+
+Progress notes (Pass 1):
+- Extended `apps/web/app/api/sessions/_lib/session-context.ts` with `requireOwnedSessionWithSandboxGuard` for reusable ownership + sandbox-state validation.
+- Refactored the following Phase 2 session utility routes to use shared guards:
+  - `apps/web/app/api/sessions/[sessionId]/files/route.ts`
+  - `apps/web/app/api/sessions/[sessionId]/skills/route.ts`
+  - `apps/web/app/api/sessions/[sessionId]/diff/route.ts`
+  - `apps/web/app/api/sessions/[sessionId]/diff/cached/route.ts`
+  - `apps/web/app/api/sessions/[sessionId]/merge/route.ts`
+  - `apps/web/app/api/sessions/[sessionId]/merge-readiness/route.ts`
+  - `apps/web/app/api/sessions/[sessionId]/pr-deployment/route.ts`
+- Added helper regression coverage in `apps/web/app/api/sessions/_lib/session-context.test.ts` for sandbox-guard forwarding/error paths.
+- Verification run for this pass:
+  - `bun run typecheck --filter=web` ✅
+  - `bun run lint --filter=web` ✅ (existing unrelated max-lines warnings)
+  - `bun test 'apps/web/app/api/sessions/_lib/session-context.test.ts' --reporter=junit --reporter-outfile session-context-test.xml` ✅
+  - `bun test 'apps/web/app/api/sessions/[sessionId]/merge/route.test.ts' --reporter=junit --reporter-outfile merge-test.xml` ✅
+  - `bun test 'apps/web/app/api/sessions/[sessionId]/skills/route.test.ts' --reporter=junit --reporter-outfile skills-test.xml` ✅
+  - `bun test 'apps/web/app/api/sessions/[sessionId]/chats/[chatId]/share/route.test.ts' --reporter=junit --reporter-outfile share-route-test.xml` ✅
+  - `bun run build --filter=web` ✅
 
 ## Phase 3 — Large route decomposition (planned)
 Candidates:

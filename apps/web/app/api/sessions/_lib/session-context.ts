@@ -1,10 +1,12 @@
-import { getChatById, getSessionById } from "@/lib/db/sessions";
+import * as sessionsDb from "@/lib/db/sessions";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 export type SessionRecord = NonNullable<
-  Awaited<ReturnType<typeof getSessionById>>
+  Awaited<ReturnType<typeof sessionsDb.getSessionById>>
 >;
-export type ChatRecord = NonNullable<Awaited<ReturnType<typeof getChatById>>>;
+export type ChatRecord = NonNullable<
+  Awaited<ReturnType<typeof sessionsDb.getChatById>>
+>;
 
 type AuthenticatedUserResult =
   | {
@@ -50,6 +52,13 @@ interface RequireOwnedSessionChatParams {
   forbiddenMessage?: string;
 }
 
+interface RequireOwnedSessionWithSandboxGuardParams
+  extends RequireOwnedSessionParams {
+  sandboxGuard: (sandboxState: SessionRecord["sandboxState"]) => boolean;
+  sandboxErrorMessage?: string;
+  sandboxErrorStatus?: number;
+}
+
 function toErrorResponse(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
 }
@@ -74,7 +83,7 @@ export async function requireOwnedSession(
 ): Promise<OwnedSessionResult> {
   const { userId, sessionId, forbiddenMessage = "Forbidden" } = params;
 
-  const sessionRecord = await getSessionById(sessionId);
+  const sessionRecord = await sessionsDb.getSessionById(sessionId);
   if (!sessionRecord) {
     return {
       ok: false,
@@ -95,14 +104,45 @@ export async function requireOwnedSession(
   };
 }
 
+export async function requireOwnedSessionWithSandboxGuard(
+  params: RequireOwnedSessionWithSandboxGuardParams,
+): Promise<OwnedSessionResult> {
+  const {
+    userId,
+    sessionId,
+    forbiddenMessage,
+    sandboxGuard,
+    sandboxErrorMessage = "Sandbox not initialized",
+    sandboxErrorStatus = 400,
+  } = params;
+
+  const ownedSessionResult = await requireOwnedSession({
+    userId,
+    sessionId,
+    forbiddenMessage,
+  });
+  if (!ownedSessionResult.ok) {
+    return ownedSessionResult;
+  }
+
+  if (!sandboxGuard(ownedSessionResult.sessionRecord.sandboxState)) {
+    return {
+      ok: false,
+      response: toErrorResponse(sandboxErrorMessage, sandboxErrorStatus),
+    };
+  }
+
+  return ownedSessionResult;
+}
+
 export async function requireOwnedSessionChat(
   params: RequireOwnedSessionChatParams,
 ): Promise<OwnedSessionChatResult> {
   const { userId, sessionId, chatId, forbiddenMessage = "Forbidden" } = params;
 
   const [sessionRecord, chat] = await Promise.all([
-    getSessionById(sessionId),
-    getChatById(chatId),
+    sessionsDb.getSessionById(sessionId),
+    sessionsDb.getChatById(chatId),
   ]);
 
   if (!sessionRecord) {

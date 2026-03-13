@@ -149,6 +149,41 @@ describe("session context guards", () => {
     }
   });
 
+  test("requireOwnedSessionWithSandboxGuard forwards ownership errors", async () => {
+    sessionRecord = null;
+    const { requireOwnedSessionWithSandboxGuard } =
+      await sessionContextModulePromise;
+
+    const result = await requireOwnedSessionWithSandboxGuard({
+      userId: "user-1",
+      sessionId: "session-1",
+      sandboxGuard: () => true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(404);
+      expect(await getErrorMessage(result.response)).toBe("Session not found");
+    }
+  });
+
+  test("requireOwnedSessionWithSandboxGuard returns sandbox error when guard fails", async () => {
+    const { requireOwnedSessionWithSandboxGuard } =
+      await sessionContextModulePromise;
+
+    const result = await requireOwnedSessionWithSandboxGuard({
+      userId: "user-1",
+      sessionId: "session-1",
+      sandboxGuard: () => false,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(400);
+      expect(await getErrorMessage(result.response)).toBe("Sandbox not initialized");
+    }
+  });
+
   test("requireOwnedSessionChat returns 404 when chat is missing", async () => {
     chatRecord = null;
     const { requireOwnedSessionChat } = await sessionContextModulePromise;
