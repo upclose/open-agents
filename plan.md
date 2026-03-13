@@ -155,3 +155,23 @@ Progress notes (Pass 3):
   - `bun run lint --filter=web` ✅ (existing unrelated max-lines warnings)
   - `bun run test:isolated` ✅
   - `bun run build --filter=web` ✅
+
+## Phase 3.1 — Regression Tests for Decomposed Routes (completed)
+Checklist:
+- [x] Add helper coverage for diff parsing/base-ref utilities
+- [x] Add helper coverage for generate-pr utility extraction
+- [x] Add route coverage for create-repo orchestration around extracted workflow
+- [x] Verify with scripts
+
+Progress notes:
+- Added `apps/web/app/api/sessions/[sessionId]/diff/_lib/diff-utils.test.ts` covering path parsing, diff splitting, generated-file detection, synthetic untracked diffs, and base-ref resolution fallbacks.
+- Added `apps/web/app/api/generate-pr/_lib/generate-pr-helpers.test.ts` covering branch/hash helpers, push error classification, token redaction, owner extraction, fork-creation fallback handling, retry config, and conversation context extraction.
+- Added `apps/web/app/api/github/create-repo/route.test.ts` covering auth/token/installation error paths plus successful workflow orchestration and session update behavior.
+- Verification run:
+  - `bun test 'apps/web/app/api/sessions/[sessionId]/diff/_lib/diff-utils.test.ts'` ✅
+  - `bun test 'apps/web/app/api/generate-pr/_lib/generate-pr-helpers.test.ts'` ✅
+  - `bun test 'apps/web/app/api/github/create-repo/route.test.ts'` ✅
+  - `bun run typecheck --filter=web` ✅
+  - `bun run lint --filter=web` ✅ (existing unrelated max-lines warnings)
+  - `bun run test:isolated` ✅
+  - `bun run build --filter=web` ✅
