@@ -2,7 +2,7 @@
 
 import { isReasoningUIPart, isToolUIPart } from "ai";
 import { useMemo, useState, type ReactNode } from "react";
-import type { WebAgentUIMessage } from "@/app/types";
+import type { WebAgentUIMessage, WebAgentUIToolPart } from "@/app/types";
 import { ToolCallsSummaryBar, type TodoInfo } from "./tool-calls-summary-bar";
 
 /**
@@ -86,6 +86,22 @@ function messageHasActiveApproval(message: WebAgentUIMessage): boolean {
   );
 }
 
+function isInterruptedToolPart(part: WebAgentUIToolPart): boolean {
+  if (part.state === "input-streaming") {
+    return true;
+  }
+
+  if (part.state === "input-available") {
+    return part.type !== "tool-ask_user_question";
+  }
+
+  return (
+    part.type === "tool-task" &&
+    part.state === "output-available" &&
+    part.preliminary === true
+  );
+}
+
 /**
  * Checks whether a message has any tool calls that were interrupted
  * (still in a running state when streaming stopped).
@@ -95,11 +111,7 @@ function messageHasInterruptedToolCalls(
   isStreaming: boolean,
 ): boolean {
   if (isStreaming) return false;
-  return message.parts.some(
-    (p) =>
-      isToolUIPart(p) &&
-      (p.state === "input-streaming" || p.state === "input-available"),
-  );
+  return message.parts.some((p) => isToolUIPart(p) && isInterruptedToolPart(p));
 }
 
 export type AssistantMessageGroupsProps = {
