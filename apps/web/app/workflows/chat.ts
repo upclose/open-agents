@@ -225,6 +225,7 @@ const runAgentStep = async (
   try {
     let responseMessage: WebAgentUIMessage | undefined;
     let lastStepUsage: LanguageModelUsage | undefined;
+    let lastStepRawFinishReason: string | undefined;
     const lastOriginalMessage = originalMessages.at(-1);
     const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
       lastOriginalMessage?.role === "assistant"
@@ -246,6 +247,7 @@ const runAgentStep = async (
       messageMetadata: ({ part: streamPart }) => {
         if (streamPart.type === "finish-step") {
           lastStepUsage = streamPart.usage;
+          lastStepRawFinishReason = streamPart.rawFinishReason;
           stepFinishReasons = [
             ...stepFinishReasons,
             {
@@ -282,6 +284,7 @@ const runAgentStep = async (
       responseMessage,
       responseMessages: (await result.response).messages,
       finishReason: await result.finishReason,
+      rawFinishReason: lastStepRawFinishReason,
       stepUsage,
       stepWasAborted: false,
     };
@@ -292,6 +295,7 @@ const runAgentStep = async (
         responseMessage: undefined,
         responseMessages: [],
         finishReason: abortedFinishReason,
+        rawFinishReason: undefined,
         stepUsage: undefined,
         stepWasAborted: true,
       };
