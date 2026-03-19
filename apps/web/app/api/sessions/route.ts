@@ -21,7 +21,8 @@ interface CreateSessionRequest {
   branch?: string;
   cloneUrl?: string;
   isNewBranch?: boolean;
-  sandboxType?: "hybrid" | "vercel" | "just-bash";
+  sandboxType?: "vercel";
+  autoCommitPush?: boolean;
   vercelProject?: VercelProjectSelection | null;
 }
 
@@ -193,13 +194,28 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  if (body.sandboxType && body.sandboxType !== "vercel") {
+    return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
+  }
+
+  if (
+    body.autoCommitPush !== undefined &&
+    typeof body.autoCommitPush !== "boolean"
+  ) {
+    return Response.json(
+      { error: "Invalid autoCommitPush value" },
+      { status: 400 },
+    );
+  }
+
   const {
     repoOwner,
     repoName,
     branch,
     cloneUrl,
     isNewBranch,
-    sandboxType = "hybrid",
+    sandboxType = "vercel",
+    autoCommitPush,
     vercelProject,
   } = body;
 
@@ -233,6 +249,7 @@ export async function POST(req: Request) {
         vercelProjectName: resolvedVercelProject?.projectName,
         vercelTeamId: resolvedVercelProject?.teamId ?? null,
         vercelTeamSlug: resolvedVercelProject?.teamSlug ?? null,
+        autoCommitPushOverride: autoCommitPush ?? preferences.autoCommitPush,
         sandboxState: { type: sandboxType },
         lifecycleState: "provisioning",
         lifecycleVersion: 0,

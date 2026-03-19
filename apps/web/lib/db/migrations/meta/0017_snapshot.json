@@ -1,5 +1,5 @@
 {
-  "id": "3675bd24-3987-48bd-8a3a-2f7f6a03b927",
+  "id": "93113ff3-12a8-473c-8aea-6b2dc64e069e",
   "prevId": "9d261560-2184-4980-9315-1791e3dcc062",
   "version": "7",
   "dialect": "postgresql",
@@ -767,30 +767,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "vercel_project_id": {
-          "name": "vercel_project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "vercel_project_name": {
-          "name": "vercel_project_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "vercel_team_id": {
-          "name": "vercel_team_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "vercel_team_slug": {
-          "name": "vercel_team_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "is_new_branch": {
           "name": "is_new_branch",
           "type": "boolean",
@@ -1149,6 +1125,13 @@
           "notNull": false,
           "default": "'vercel'"
         },
+        "auto_commit_push": {
+          "name": "auto_commit_push",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "model_variants": {
           "name": "model_variants",
           "type": "jsonb",
@@ -1311,119 +1294,6 @@
         }
       },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.vercel_project_links": {
-      "name": "vercel_project_links",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repo_owner": {
-          "name": "repo_owner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repo_name": {
-          "name": "repo_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_name": {
-          "name": "project_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "team_id": {
-          "name": "team_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "team_slug": {
-          "name": "team_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "vercel_project_links_user_repo_idx": {
-          "name": "vercel_project_links_user_repo_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "repo_owner",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "repo_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "vercel_project_links_user_id_users_id_fk": {
-          "name": "vercel_project_links_user_id_users_id_fk",
-          "tableFrom": "vercel_project_links",
-          "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

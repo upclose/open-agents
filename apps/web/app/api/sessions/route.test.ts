@@ -28,6 +28,7 @@ mock.module("@/lib/session/get-server-session", () => ({
 mock.module("@/lib/db/user-preferences", () => ({
   getUserPreferences: async () => ({
     defaultModelId: "anthropic/claude-haiku-4.5",
+    autoCommitPush: false,
   }),
 }));
 
@@ -82,6 +83,7 @@ describe("/api/sessions POST Vercel project linking", () => {
       cloneUrl: "https://github.com/vercel/next.js",
       isNewBranch: false,
       sandboxType: "vercel",
+      autoCommitPush: true,
       vercelProject: {
         projectId: "prj_123",
         projectName: "next-web",
@@ -106,6 +108,7 @@ describe("/api/sessions POST Vercel project linking", () => {
         vercelProjectName: "next-web",
         vercelTeamId: "team_123",
         vercelTeamSlug: "acme",
+        autoCommitPushOverride: true,
       }),
     );
     expect(upsertCalls).toEqual([
@@ -139,7 +142,8 @@ describe("/api/sessions POST Vercel project linking", () => {
           branch: "main",
           cloneUrl: "https://github.com/vercel/next.js",
           isNewBranch: false,
-          sandboxType: "hybrid",
+          sandboxType: "vercel",
+          autoCommitPush: false,
         } satisfies Omit<CreateSessionInput, "vercelProject">),
       }),
     );
@@ -151,6 +155,7 @@ describe("/api/sessions POST Vercel project linking", () => {
         vercelProjectName: "saved-project",
         vercelTeamId: "team_saved",
         vercelTeamSlug: "saved-team",
+        autoCommitPushOverride: false,
       }),
     );
     expect(upsertCalls).toHaveLength(0);
@@ -174,7 +179,8 @@ describe("/api/sessions POST Vercel project linking", () => {
           branch: "main",
           cloneUrl: "https://github.com/vercel/next.js",
           isNewBranch: false,
-          sandboxType: "hybrid",
+          sandboxType: "vercel",
+          autoCommitPush: false,
           vercelProject: null,
         } satisfies CreateSessionInput),
       }),
@@ -187,6 +193,7 @@ describe("/api/sessions POST Vercel project linking", () => {
         vercelProjectName: undefined,
         vercelTeamId: null,
         vercelTeamSlug: null,
+        autoCommitPushOverride: false,
       }),
     );
     expect(upsertCalls).toHaveLength(0);

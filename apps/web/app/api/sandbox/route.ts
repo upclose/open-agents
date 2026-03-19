@@ -1,14 +1,13 @@
+import { connectSandbox, type SandboxState } from "@open-harness/sandbox";
 import {
-  connectSandbox,
-  type FileEntry,
-  type SandboxState,
-} from "@open-harness/sandbox";
-import { after } from "next/server";
+  requireAuthenticatedUser,
+  requireOwnedSession,
+  type SessionRecord,
+} from "@/app/api/sessions/_lib/session-context";
 import { getGitHubAccount } from "@/lib/db/accounts";
-import { getSessionById, updateSession } from "@/lib/db/sessions";
+import { updateSession } from "@/lib/db/sessions";
 import { parseGitHubUrl } from "@/lib/github/client";
 import { getRepoToken } from "@/lib/github/get-repo-token";
-import { downloadAndExtractTarball } from "@/lib/github/tarball";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import {
   createDotEnvLocalFileContent,
@@ -28,25 +27,10 @@ import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
 import { canOperateOnSandbox, clearSandboxState } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
-const WORKING_DIR = "/vercel/sandbox";
-
-/**
- * Convert simple file strings to FileEntry format.
- */
-function toFileEntries(
-  files: Record<string, string>,
-): Record<string, FileEntry> {
-  const entries: Record<string, FileEntry> = {};
-  for (const [path, content] of Object.entries(files)) {
-    entries[path] = { type: "file", content };
-  }
-  return entries;
-}
-
 async function syncLinkedVercelEnvFile(params: {
   userId: string;
   sandbox: Awaited<ReturnType<typeof connectSandbox>>;
-  sessionRecord: Awaited<ReturnType<typeof getSessionById>> | undefined;
+  sessionRecord: SessionRecord | undefined;
 }): Promise<void> {
   const { userId, sandbox, sessionRecord } = params;
 
@@ -90,7 +74,7 @@ interface CreateSandboxRequest {
   isNewBranch?: boolean;
   sessionId?: string;
   sandboxId?: string;
-  sandboxType?: "hybrid" | "vercel" | "just-bash";
+  sandboxType?: "vercel";
 }
 
 export async function POST(req: Request) {
@@ -101,13 +85,16 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  if (body.sandboxType && body.sandboxType !== "vercel") {
+    return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
+  }
+
   const {
     repoUrl,
     branch = "main",
     isNewBranch = false,
     sessionId,
     sandboxId: providedSandboxId,
-    sandboxType = "hybrid",
   } = body;
 
   // Get session for auth
@@ -141,15 +128,17 @@ export async function POST(req: Request) {
   }
 
   // Validate session ownership
-  let sessionRecord;
+  let sessionRecord: SessionRecord | undefined;
   if (sessionId) {
-    sessionRecord = await getSessionById(sessionId);
-    if (!sessionRecord) {
-      return Response.json({ error: "Session not found" }, { status: 404 });
+    const sessionContext = await requireOwnedSession({
+      userId: session.user.id,
+      sessionId,
+    });
+    if (!sessionContext.ok) {
+      return sessionContext.response;
     }
-    if (sessionRecord.userId !== session.user.id) {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
-    }
+
+    sessionRecord = sessionContext.sessionRecord;
   }
 
   const githubAccount = await getGitHubAccount(session.user.id);
@@ -176,7 +165,7 @@ export async function POST(req: Request) {
   // ============================================
   if (providedSandboxId) {
     const sandbox = await connectSandbox({
-      state: { type: "hybrid", sandboxId: providedSandboxId },
+      state: { type: "vercel", sandboxId: providedSandboxId },
       options: { env, ports: DEFAULT_SANDBOX_PORTS },
     });
 
@@ -200,37 +189,14 @@ export async function POST(req: Request) {
       createdAt: Date.now(),
       timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
       currentBranch: sandbox.currentBranch,
-      mode: "hybrid",
+      mode: "vercel",
     });
   }
 
   // ============================================
-  // NEW SANDBOX: Create based on sandboxType
+  // NEW SANDBOX: Create a Vercel sandbox
   // ============================================
   const startTime = Date.now();
-
-  // Download and extract tarball if repo provided (needed for hybrid and just-bash)
-  let files: Record<string, FileEntry> = {};
-  if (repoUrl && (sandboxType === "hybrid" || sandboxType === "just-bash")) {
-    let tarballResult;
-    try {
-      tarballResult = await downloadAndExtractTarball(
-        repoUrl,
-        branch,
-        githubToken ?? undefined,
-        WORKING_DIR,
-      );
-    } catch {
-      // Retry without token for public repos
-      tarballResult = await downloadAndExtractTarball(
-        repoUrl,
-        branch,
-        undefined,
-        WORKING_DIR,
-      );
-    }
-    files = toFileEntries(tarballResult.files);
-  }
 
   const source = repoUrl
     ? {
@@ -241,88 +207,19 @@ export async function POST(req: Request) {
       }
     : undefined;
 
-  let sandbox;
-
-  if (sandboxType === "just-bash") {
-    // Local-only sandbox
-    sandbox = await connectSandbox({
-      state: {
-        type: "just-bash",
-        files,
-        workingDirectory: WORKING_DIR,
-        source,
-      },
-      options: { env },
-    });
-  } else if (sandboxType === "vercel") {
-    // Cloud-first sandbox
-    sandbox = await connectSandbox({
-      state: {
-        type: "vercel",
-        source,
-      },
-      options: {
-        env,
-        gitUser,
-        timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        ports: DEFAULT_SANDBOX_PORTS,
-        baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-      },
-    });
-  } else {
-    // Default: hybrid sandbox (local first, then cloud)
-    sandbox = await connectSandbox({
-      state: {
-        type: "hybrid",
-        files,
-        workingDirectory: WORKING_DIR,
-        source,
-      },
-      options: {
-        env,
-        gitUser,
-        timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        ports: DEFAULT_SANDBOX_PORTS,
-        baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-        scheduleBackgroundWork: (cb) => after(cb),
-        hooks: sessionId
-          ? {
-              onCloudSandboxReady: async (sandboxId) => {
-                const currentSession = await getSessionById(sessionId);
-                if (currentSession?.sandboxState?.type === "hybrid") {
-                  const nextState: SandboxState = { type: "hybrid", sandboxId };
-                  await updateSession(sessionId, {
-                    sandboxState: nextState,
-                    lifecycleVersion: getNextLifecycleVersion(
-                      currentSession.lifecycleVersion,
-                    ),
-                    ...buildActiveLifecycleUpdate(nextState),
-                  });
-                  console.log(
-                    `[Sandbox] Cloud sandbox ready for session ${sessionId}: ${sandboxId}`,
-                  );
-
-                  kickSandboxLifecycleWorkflow({
-                    sessionId,
-                    reason: "cloud-ready",
-                  });
-                }
-              },
-              onCloudSandboxFailed: async (error) => {
-                await updateSession(sessionId, {
-                  lifecycleState: "failed",
-                  lifecycleError: error.message,
-                });
-                console.error(
-                  `[Sandbox] Cloud sandbox failed for session ${sessionId}:`,
-                  error.message,
-                );
-              },
-            }
-          : undefined,
-      },
-    });
-  }
+  const sandbox = await connectSandbox({
+    state: {
+      type: "vercel",
+      source,
+    },
+    options: {
+      env,
+      gitUser,
+      timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+      ports: DEFAULT_SANDBOX_PORTS,
+      baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+    },
+  });
 
   if (sessionId) {
     await syncLinkedVercelEnvFile({
@@ -352,17 +249,17 @@ export async function POST(req: Request) {
 
   return Response.json({
     createdAt: Date.now(),
-    timeout: sandboxType === "just-bash" ? null : DEFAULT_SANDBOX_TIMEOUT_MS,
+    timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
     currentBranch: repoUrl ? branch : undefined,
-    mode: sandboxType,
+    mode: "vercel",
     timing: { readyMs },
   });
 }
 
 export async function DELETE(req: Request) {
-  const session = await getServerSession();
-  if (!session?.user) {
-    return Response.json({ error: "Not authenticated" }, { status: 401 });
+  const authResult = await requireAuthenticatedUser();
+  if (!authResult.ok) {
+    return authResult.response;
   }
 
   let body: unknown;
@@ -383,13 +280,16 @@ export async function DELETE(req: Request) {
 
   const { sessionId } = body as { sessionId: string };
 
-  const sessionRecord = await getSessionById(sessionId);
-  if (!sessionRecord) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+  const sessionContext = await requireOwnedSession({
+    userId: authResult.userId,
+    sessionId,
+  });
+  if (!sessionContext.ok) {
+    return sessionContext.response;
   }
-  if (sessionRecord.userId !== session.user.id) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-  }
+
+  const { sessionRecord } = sessionContext;
+
   // If there's no sandbox to stop, return success (idempotent)
   if (!canOperateOnSandbox(sessionRecord.sandboxState)) {
     return Response.json({ success: true, alreadyStopped: true });

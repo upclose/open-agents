@@ -1,24 +1,14 @@
 "use client";
 
-import { Check, GitBranch, Loader2, Plus, X } from "lucide-react";
+import { GitBranch, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useSession } from "@/hooks/use-session";
 import type { CreateSessionInput } from "@/hooks/use-sessions";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { fetcher } from "@/lib/swr";
-import type {
-  RepoVercelProjectsResponse,
-  VercelProjectCandidate,
-} from "@/lib/vercel/types";
+import type { RepoVercelProjectsResponse } from "@/lib/vercel/types";
 import { cn } from "@/lib/utils";
 import { BranchSelectorCompact } from "./branch-selector-compact";
 import { RepoSelectorCompact } from "./repo-selector-compact";
@@ -26,6 +16,8 @@ import {
   DEFAULT_SANDBOX_TYPE,
   SANDBOX_OPTIONS,
 } from "./sandbox-selector-compact";
+import { SessionStarterVercelProjectSelector } from "./session-starter-vercel-project-selector";
+import { Switch } from "./ui/switch";
 
 const NO_VERCEL_PROJECT_VALUE = "__none__";
 
@@ -35,25 +27,6 @@ interface SessionStarterProps {
   onSubmit: (session: CreateSessionInput) => void;
   isLoading?: boolean;
   lastRepo: { owner: string; repo: string } | null;
-}
-
-function VercelTriangleIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 76 65"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" />
-    </svg>
-  );
-}
-
-function getVercelProjectLabel(project: VercelProjectCandidate): string {
-  return project.teamName
-    ? `${project.projectName} · ${project.teamName}`
-    : project.projectName;
 }
 
 export function SessionStarter({
@@ -74,8 +47,11 @@ export function SessionStarter({
     NO_VERCEL_PROJECT_VALUE,
   );
 
-  const { preferences } = useUserPreferences();
+  const { preferences, loading: preferencesLoading } = useUserPreferences();
   const { session: currentSession, loading: sessionLoading } = useSession();
+
+  const defaultAutoCommitPush = preferences?.autoCommitPush ?? false;
+  const [autoCommitPush, setAutoCommitPush] = useState<boolean | null>(null);
 
   const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
   const sandboxName =
@@ -151,13 +127,15 @@ export function SessionStarter({
 
   const isRepoSelectionComplete =
     mode !== "repo" || (selectedOwner && selectedRepo);
+  const controlsDisabled = isLoading || preferencesLoading;
   const isProjectLookupPending =
     shouldLookupVercelProjects && repoProjectsLoading && !repoProjectsData;
   const isSubmitDisabled =
-    isLoading ||
+    controlsDisabled ||
     !isRepoSelectionComplete ||
     (mode === "repo" && sessionLoading) ||
     isProjectLookupPending;
+  const effectiveAutoCommitPush = autoCommitPush ?? defaultAutoCommitPush;
 
   const handleSubmit = () => {
     if (isSubmitDisabled) return;
@@ -172,6 +150,7 @@ export function SessionStarter({
           : undefined,
       isNewBranch: mode === "repo" ? isNewBranch : false,
       sandboxType,
+      autoCommitPush: effectiveAutoCommitPush,
       vercelProject:
         mode === "repo" && currentSession?.authProvider === "vercel"
           ? selectedVercelProject
@@ -262,126 +241,15 @@ export function SessionStarter({
             {selectedOwner &&
               selectedRepo &&
               currentSession?.authProvider === "vercel" && (
-                <div
-                  className={cn(
-                    "relative overflow-hidden rounded-lg border p-3 transition-all duration-300",
-                    selectedVercelProject
-                      ? "border-foreground/15 bg-foreground/[0.03] dark:border-white/15 dark:bg-white/[0.04]"
-                      : "border-input bg-background/60 dark:border-white/10 dark:bg-white/[0.02]",
-                  )}
-                >
-                  {/* Linked state accent line */}
-                  <div
-                    className={cn(
-                      "absolute inset-y-0 left-0 w-[2px] transition-all duration-300",
-                      selectedVercelProject
-                        ? "bg-foreground/70 dark:bg-white/50"
-                        : "bg-transparent",
-                    )}
-                  />
-
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={cn(
-                        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-300",
-                        selectedVercelProject
-                          ? "bg-foreground text-background dark:bg-white dark:text-neutral-900"
-                          : "bg-muted/80 text-muted-foreground dark:bg-white/[0.06] dark:text-neutral-500",
-                      )}
-                    >
-                      <VercelTriangleIcon className="h-3 w-3" />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">
-                          Vercel project
-                        </p>
-                        {selectedVercelProject && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-foreground/70 dark:bg-white/10 dark:text-white/60">
-                            <Check className="h-2.5 w-2.5" />
-                            Linked
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {selectedVercelProject ? (
-                          <>
-                            Dev environment variables from{" "}
-                            <span className="font-medium text-foreground/80 dark:text-white/70">
-                              {selectedVercelProject.projectName}
-                            </span>{" "}
-                            will sync to{" "}
-                            <code className="rounded bg-muted/80 px-1 py-0.5 text-[11px] dark:bg-white/[0.06]">
-                              .env.local
-                            </code>
-                          </>
-                        ) : (
-                          <>
-                            Sync Development environment variables to{" "}
-                            <code className="rounded bg-muted/80 px-1 py-0.5 text-[11px] dark:bg-white/[0.06]">
-                              .env.local
-                            </code>{" "}
-                            when the sandbox is created.
-                          </>
-                        )}
-                      </p>
-
-                      <div className="mt-2.5">
-                        {isProjectLookupPending ? (
-                          <div className="flex h-9 items-center gap-2 rounded-md border border-dashed border-input/60 px-3 text-sm text-muted-foreground dark:border-white/[0.08]">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            <span className="text-xs">
-                              Finding matching projects…
-                            </span>
-                          </div>
-                        ) : repoProjects.length > 0 ? (
-                          <Select
-                            value={selectedVercelProjectId}
-                            onValueChange={setSelectedVercelProjectId}
-                          >
-                            <SelectTrigger className="w-full bg-background/80 text-sm dark:bg-white/[0.03]">
-                              <SelectValue placeholder="Choose a Vercel project" />
-                            </SelectTrigger>
-                            <SelectContent align="start" position="popper">
-                              <SelectItem value={NO_VERCEL_PROJECT_VALUE}>
-                                Don&apos;t sync env variables
-                              </SelectItem>
-                              {repoProjects.map((project) => (
-                                <SelectItem
-                                  key={project.projectId}
-                                  value={project.projectId}
-                                >
-                                  {getVercelProjectLabel(project)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <div className="rounded-md border border-dashed border-input/60 px-3 py-2 text-xs text-muted-foreground dark:border-white/[0.08]">
-                            No matching project found for this repository.
-                          </div>
-                        )}
-
-                        {repoProjectsError ? (
-                          <p className="mt-1.5 text-xs text-destructive">
-                            Couldn&apos;t load projects:{" "}
-                            {repoProjectsError.message}
-                          </p>
-                        ) : selectedVercelProject?.isSavedDefault ? (
-                          <p className="mt-1.5 text-[11px] text-muted-foreground/70">
-                            Remembered from last time
-                          </p>
-                        ) : repoProjects.length === 1 &&
-                          selectedVercelProject ? (
-                          <p className="mt-1.5 text-[11px] text-muted-foreground/70">
-                            Auto-selected the only matching project
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <SessionStarterVercelProjectSelector
+                  selectedProject={selectedVercelProject}
+                  selectedProjectId={selectedVercelProjectId}
+                  onSelectedProjectIdChange={setSelectedVercelProjectId}
+                  repoProjects={repoProjects}
+                  isProjectLookupPending={isProjectLookupPending}
+                  repoProjectsErrorMessage={repoProjectsError?.message}
+                  noneValue={NO_VERCEL_PROJECT_VALUE}
+                />
               )}
           </div>
         )}
@@ -391,6 +259,20 @@ export function SessionStarter({
             Start with a blank sandbox -- no repository required.
           </p>
         )}
+
+        <div className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/20 px-3 py-2 dark:border-white/10 dark:bg-white/[0.02]">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Auto commit and push</p>
+            <p className="text-xs text-muted-foreground">
+              Automatically commit and push after each agent turn.
+            </p>
+          </div>
+          <Switch
+            checked={effectiveAutoCommitPush}
+            onCheckedChange={setAutoCommitPush}
+            disabled={controlsDisabled}
+          />
+        </div>
 
         <button
           type="button"
