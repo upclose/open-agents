@@ -1,35 +1,25 @@
-Summary: Make sandbox sessions Vercel-CLI-ready by reusing the app’s existing Vercel OAuth access token. Refresh the token server-side, sync Vercel CLI’s on-disk auth state into the sandbox, and provide project/org context automatically so agent-run `vercel` commands work without interactive login.
+Summary: Chat rendering currently scales with full history during active streams: the page fetches every message, rebuilds grouped message metadata for the whole chat, and re-renders the whole list every ~75ms stream tick. The recommended fix is a memoized, virtualized message list so only visible rows (plus the live streaming row) stay mounted and update.
 
-Context: The app already stores encrypted Vercel access/refresh tokens and refreshes them in `apps/web/lib/vercel/token.ts`. The OAuth callback in `apps/web/app/api/auth/vercel/callback/route.ts` persists the Vercel `externalId`, access token, refresh token, and expiry in `users`. Chat runtime already reconnects sandboxes in `apps/web/app/api/chat/_lib/runtime.ts`, but only refreshes GitHub auth. Initial sandbox provisioning in `apps/web/app/api/sandbox/route.ts` already syncs linked Vercel project env vars into `.env.local`. Vercel CLI accepts bearer auth, but env-only `VERCEL_TOKEN` is unreliable in the current CLI version because the CLI checks for existing credentials before hoisting that env var. The CLI’s durable auth path is `auth.json`, and agent tool executions reconnect sandboxes without reapplying custom env, so the most reliable approach is to write the auth file to the CLI’s default global config location inside the sandbox and write `.vercel/project.json` in the repo. The CLI must not own the app-issued refresh token because CLI refresh uses Vercel CLI’s OAuth client, not this app’s OAuth client.
+Context: `apps/web/app/sessions/[sessionId]/chats/[chatId]/page.tsx` loads the full chat history up front and passes every message into the client. `apps/web/app/sessions/[sessionId]/chats/[chatId]/hooks/use-session-chat-runtime.ts` drives streaming updates through `useChat` with `experimental_throttle: 75`, so the chat view can re-render many times per second. `apps/web/app/sessions/[sessionId]/chats/[chatId]/session-chat-content.tsx` derives `groupedRenderMessages` by walking every message/part and then maps the entire list on each render. `apps/web/components/assistant-message-groups.tsx` defaults to collapsed, but still renders the summary bar and still invokes `children(isExpanded)`; in collapsed mode the hidden tool/reasoning groups return `null`, yet the whole group tree is still traversed. So the collapsed view is not rendering every hidden tool/reasoning DOM node, but it is still processing the full history and still mounting every user message plus the final assistant markdown block for every assistant message. There is no existing virtualization dependency in `apps/web/package.json`. `apps/web/hooks/use-scroll-to-bottom.ts` assumes a normal DOM list, so bottom-pinning will need to become virtualizer-aware. The repo already uses `contentVisibility` in `apps/web/components/inbox-sidebar.tsx`, which is a useful lightweight pattern to reuse on message rows.
 
-Approach: Keep token refresh entirely server-side and treat the app’s Vercel access token as the CLI credential. Add a structured helper that returns a fresh Vercel access token plus its expiry and the user’s Vercel `externalId`. Add a sandbox helper that writes/removes Vercel CLI auth at the default CLI config path, writes/removes `.vercel/project.json` based on the linked session project, and never persists the app-issued refresh token. Use that helper in the agent chat runtime on every reconnect so CLI auth stays fresh before agent tools reconnect the sandbox, and prime the sandbox during initial provisioning so the first agent turn starts from a ready state.
+Approach: Introduce a dedicated message-list layer with memoized row components and a bottom-anchored virtualizer that supports variable-height rows. Move the inline row rendering out of `session-chat-content.tsx`, precompute per-message view data once, and make collapsed assistant messages avoid executing the hidden-group render path. Use virtualization to mount only the viewport window plus overscan, while preserving the current auto-scroll-to-bottom behavior for live streams and the existing expand/collapse UX for assistant tool/reasoning content. Because chat rows have highly variable heights and can grow during streaming, prefer a measured virtualizer rather than bespoke windowing.
 
 Changes:
-- `apps/web/lib/vercel/token.ts` - add a new structured helper (alongside `getUserVercelToken`) that returns `{ token, expiresAt, externalId }` after applying the existing refresh flow. Keep `getUserVercelToken()` as a thin wrapper for current callers.
-- `apps/web/lib/sandbox/vercel-cli-auth.ts` - add a new helper to prepare sandbox Vercel CLI state. It should:
-  - fetch fresh user Vercel auth via the new token helper
-  - choose the CLI org ID from `session.vercelTeamId ?? user.externalId`
-  - write or remove the default CLI `auth.json` containing only `token` and `expiresAt`
-  - write or remove `.vercel/project.json` based on the session’s linked Vercel project
-  - avoid writing the Vercel refresh token into CLI config
-- `apps/web/app/api/chat/_lib/runtime.ts` - extend the existing sandbox runtime setup to call the new helper on every reconnect, then sync the CLI files into the sandbox before skill discovery / agent execution.
-- `apps/web/app/api/sandbox/route.ts` - after provisioning or reconnecting a sandbox for a session, call the same helper to prime Vercel CLI auth/project metadata early, next to the existing `.env.local` sync logic.
-- `apps/web/app/api/sandbox/route.test.ts` - extend the existing sandbox provisioning tests to verify Vercel CLI prep runs: auth metadata is requested, auth/project files are written for linked projects, and the helper no-ops cleanly when no Vercel token is available.
-- `apps/web/app/api/chat/route.test.ts` - update mocks for the new Vercel token/CLI prep path so the chat route keeps exercising the runtime without hitting real DB/auth code.
-- `apps/web/lib/sandbox/vercel-cli-auth.test.ts` - add focused unit coverage for org/project resolution, auth file contents, stale-project cleanup, and the no-refresh-token rule.
+- `apps/web/app/sessions/[sessionId]/chats/[chatId]/session-chat-content.tsx` - replace the inline `groupedRenderMessages.map(...)` list with a dedicated virtualized message list, keep message grouping as pure view-model prep, and pass only the live streaming/timer props needed by visible rows.
+- `apps/web/components/chat-message-row.tsx` - add a memoized per-message row component that renders user bubbles, assistant markdown, tool/task groups, reasoning blocks, and message actions; apply the existing `contentVisibility` pattern to reduce offscreen paint/layout work.
+- `apps/web/components/assistant-message-groups.tsx` - stop forcing the collapsed path through the full hidden-children render function; accept precomputed summary/visible-content props so collapsed assistant rows do less work.
+- `apps/web/components/virtualized-message-list.tsx` - add the bottom-anchored virtualized list wrapper with overscan, variable-height measurement, and “keep pinned to bottom while streaming” behavior.
+- `apps/web/hooks/use-scroll-to-bottom.ts` - adapt bottom detection and `scrollToBottom()` to work against the virtualized list container.
+- `apps/web/package.json` - add a small measured-row virtualizer dependency if approved; otherwise this plan should be revised to a lighter no-dependency optimization pass instead of full virtualization.
 
 Verification:
-- Targeted tests:
-  - `bun test apps/web/app/api/sandbox/route.test.ts`
-  - `bun test apps/web/app/api/chat/route.test.ts`
-  - `bun test apps/web/lib/sandbox/vercel-cli-auth.test.ts`
-- End-to-end manual checks after implementation:
-  - Sign in with Vercel, create/resume a sandbox, then ask the agent to run `npx vercel whoami`
-  - Ask the agent to run a project-scoped command such as `npx vercel project inspect` or `npx vercel env pull .env.local --yes`
-  - Verify commands work without interactive login or passing `--token`
-  - Verify linked-team sessions resolve team-scoped projects, and personal-scope sessions fall back to the user’s Vercel `externalId`
-  - Verify sessions without a Vercel token do not leave stale CLI auth behind
-- Full repo validation after code changes:
+- Manual checks in the chat UI:
+  - Open a long chat, start a new response, and confirm only visible rows mount/update while scrolling remains smooth.
+  - Verify the collapsed default view still shows the summary bar and final assistant prose, and expanding a message restores tools/reasoning correctly.
+  - Verify streaming keeps the viewport pinned to the bottom when already at bottom, but does not yank the user down when they have scrolled up.
+  - Verify the “scroll to bottom” button and retry/stop actions still work during active streams.
+- Shared checks:
+  - Confirm chats without collapsible content still render normally.
+  - Confirm approval-required tool calls still force the relevant message open.
+- Project validation after code changes:
   - `bun run ci`
-- Known risk to check explicitly:
-  - Some Vercel CLI commands may still be limited by the permissions granted to the app’s OAuth token. If a command fails for permission reasons after auth succeeds, that is a product-permissions gap, not a sandbox-auth plumbing bug.
