@@ -121,10 +121,12 @@ import {
 } from "./session-chat-context";
 import { useStreamRecovery } from "./hooks/use-stream-recovery";
 import { useAutoCommitStatus } from "./hooks/use-auto-commit-status";
+import { useDevServer } from "./hooks/use-dev-server";
 import {
   CommitActionHeaderButton,
   CommitActionMenuItem,
 } from "./commit-action-button";
+import { DevServerMenuItems } from "./dev-server-menu-items";
 import {
   createSandbox,
   getSandboxCreateErrorDetails,
@@ -2298,6 +2300,17 @@ export function SessionChatContent({
     isSandboxActive,
     reconnectionStatus,
   ]);
+  const canRunDevServer =
+    !isArchived &&
+    isSandboxActive &&
+    !isCreatingSandbox &&
+    !isRestoringSnapshot &&
+    !isReconnectingSandbox &&
+    !isHibernatingUi;
+  const devServer = useDevServer({
+    sessionId: session.id,
+    canRun: canRunDevServer,
+  });
 
   const hasRepo = Boolean(session.cloneUrl);
   const hasExistingPr = session.prNumber != null;
@@ -2647,7 +2660,7 @@ export function SessionChatContent({
                     <EllipsisVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-72">
                   <NewChatMenuItem />
                   <DropdownMenuItem onClick={() => setChatSwitcherOpen(true)}>
                     <MessageSquareMore className="mr-2 h-4 w-4" />
@@ -2690,7 +2703,10 @@ export function SessionChatContent({
                       Archive
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuSeparator />
+                  <DevServerMenuItems
+                    canRun={canRunDevServer}
+                    devServer={devServer}
+                  />
                   {supportsDiff && (
                     <DropdownMenuItem
                       disabled={!diff && !session.cachedDiff}
