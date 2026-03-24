@@ -26,6 +26,7 @@ import {
   RotateCcw,
   Share2,
   Square,
+  Terminal,
   Trash2,
   X,
 } from "lucide-react";
@@ -160,6 +161,10 @@ const CreateRepoDialog = dynamic(
 );
 const Streamdown = dynamic(
   () => import("streamdown").then((m) => m.Streamdown),
+  { ssr: false },
+);
+const TerminalPanel = dynamic(
+  () => import("./terminal-panel").then((m) => m.TerminalPanel),
   { ssr: false },
 );
 
@@ -858,6 +863,7 @@ export function SessionChatContent({
   const [mobileArchiveDialogOpen, setMobileArchiveDialogOpen] = useState(false);
   const [mobileShareOpen, setMobileShareOpen] = useState(false);
   const [chatSwitcherOpen, setChatSwitcherOpen] = useState(false);
+  const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [copiedAssistantMessageId, setCopiedAssistantMessageId] = useState<
@@ -2240,6 +2246,7 @@ export function SessionChatContent({
     lifecycleTiming.state === "active" ||
     lifecycleTiming.state === "provisioning";
   const isSandboxActive = isSandboxValid(sandboxInfo) && serverSaysActive;
+  const canOpenTerminal = isSandboxActive;
 
   const sandboxUiStatus = useMemo(() => {
     if (isArchived) {
@@ -2542,6 +2549,17 @@ export function SessionChatContent({
           <div className="flex items-center gap-1 xl:gap-2">
             {/* Overflow menu + primary git action */}
             <div className="flex items-center gap-1">
+              {canOpenTerminal && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 px-0 xl:w-auto xl:px-3"
+                  onClick={() => setTerminalPanelOpen(true)}
+                >
+                  <Terminal className="h-4 w-4 xl:mr-2" />
+                  <span className="hidden xl:inline">Terminal</span>
+                </Button>
+              )}
               {hasRepo ? (
                 hasExistingPr ? (
                   showCommitAction ? (
@@ -2653,6 +2671,14 @@ export function SessionChatContent({
                     <MessageSquareMore className="mr-2 h-4 w-4" />
                     Switch Chat
                   </DropdownMenuItem>
+                  {canOpenTerminal && (
+                    <DropdownMenuItem
+                      onClick={() => setTerminalPanelOpen(true)}
+                    >
+                      <Terminal className="mr-2 h-4 w-4" />
+                      Terminal
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setMobileShareOpen(true)}>
                     <Share2 className="mr-2 h-4 w-4" />
@@ -2800,6 +2826,22 @@ export function SessionChatContent({
               activeChatId={chatInfo.id}
               isMobile={isMobile}
             />
+
+            <Sheet open={terminalPanelOpen} onOpenChange={setTerminalPanelOpen}>
+              <SheetContent
+                side="right"
+                className="flex w-full max-w-4xl flex-col gap-0 p-0 sm:max-w-3xl xl:max-w-5xl"
+              >
+                <SheetHeader className="border-b border-border px-4 py-3">
+                  <SheetTitle>Terminal</SheetTitle>
+                </SheetHeader>
+                <div className="min-h-0 flex-1">
+                  {terminalPanelOpen ? (
+                    <TerminalPanel sessionId={session.id} />
+                  ) : null}
+                </div>
+              </SheetContent>
+            </Sheet>
 
             {/* Mobile share dialog */}
             <ShareDialog
