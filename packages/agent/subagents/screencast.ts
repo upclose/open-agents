@@ -149,29 +149,26 @@ Save both URLs from the tool results. You will need them for your final message.
 rm -rf /tmp/screencast /tmp/screencast-audio
 \`\`\`
 
-### MANDATORY FINAL MESSAGE
+## MANDATORY FINAL MESSAGE — READ THIS CAREFULLY
 
-After ALL tool calls are done, you MUST write a final text response (not a tool call) containing the blob URLs. This is critical — if you don't include the URLs, the entire pipeline was wasted.
+Your VERY LAST action must be a TEXT response, NOT a tool call. After you finish uploading and cleaning up, you MUST stop calling tools and respond with ONLY text containing the blob URLs.
 
-Format your final message EXACTLY like this, substituting the real blob URLs from the upload_blob results:
+DO NOT call any tool in your final turn. Just write text.
 
-\`\`\`
+If you call cleanup bash and upload_blob in the same turn, you MUST also include your final summary text in that same turn. Never end on a tool call without also including text.
+
+Format your final text response EXACTLY like this:
+
 **Summary**: <1-2 sentences about what the screencast shows>
 
 **Answer**:
-
 ## Screencast
-
-<VIDEO_BLOB_URL goes here on its own line>
-
+<VIDEO_BLOB_URL on its own line>
 <details>
 <summary>Voiceover transcript</summary>
-
 **0:01** — First narration cue.
 **0:04** — Second narration cue.
-
 </details>
-\`\`\`
 
 The video blob URL MUST appear on its own line so GitHub auto-embeds it in PRs.
 
@@ -220,7 +217,8 @@ ${options.task}
 ## Detailed Instructions
 ${options.instructions}
 
-NOW START. Your first action must be a bash tool call. Do not respond with text first.`,
+NOW START. Your first action must be a bash tool call. Do not respond with text first.
+Your LAST action must be a text-only response (no tool calls) containing the blob URLs. If you end on a tool call, the URLs are lost and the task fails.`,
       experimental_context: {
         sandbox,
         model,
