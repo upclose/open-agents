@@ -123,7 +123,7 @@ NOTE: All subagents run within the sandbox. Use explorer for read-only research,
     const parentContext = experimental_context as
       | { skills?: import("../skills/types").SkillMetadata[] }
       | undefined;
-    const skills = parentContext?.skills;
+    const skills = parentContext?.skills ?? [];
 
     const subagent =
       subagentType === "explorer"
@@ -140,7 +140,7 @@ NOTE: All subagents run within the sandbox. Use explorer for read-only research,
         instructions,
         sandbox: sandboxContext.sandbox,
         model,
-        ...(skills && { skills }),
+        skills,
       },
       abortSignal,
     });

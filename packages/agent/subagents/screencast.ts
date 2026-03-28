@@ -170,7 +170,7 @@ export const screencastSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? settings.model;
-    const skills = options.skills;
+    const skills = options.skills ?? [];
     return {
       ...settings,
       model,
