@@ -2,9 +2,7 @@ import type { LanguageModel } from "ai";
 import { gateway, stepCountIs, ToolLoopAgent } from "ai";
 import { z } from "zod";
 import { bashTool } from "../tools/bash";
-import { skillTool } from "../tools/skill";
 import { synthesizeVoiceoverTool, uploadBlobTool } from "./screencast-tools";
-import type { SkillMetadata } from "../skills/types";
 import type { SandboxExecutionContext } from "../types";
 
 const SCREENCAST_SYSTEM_PROMPT = `You are a screencast agent that records narrated browser demos and returns a shareable URL.
@@ -32,16 +30,52 @@ Narration guidelines:
 - Keep each cue to 1-2 sentences
 - Don't mention selectors, refs, coordinates, or wait times
 
-## FIRST: Load browser automation skill
+## agent-browser command reference
 
-Before doing anything else, invoke the agent-browser skill to load the full command reference:
+Use ONLY these exact commands via bash. Do NOT invent commands — there is no "open-url", "goto", "navigate-to", etc.
 
 \`\`\`
-skill({ skill: "agent-browser" })
+# Navigation
+agent-browser open <url>                  # Navigate to URL (the ONLY way to open a page)
+agent-browser back                        # Go back
+agent-browser forward                     # Go forward
+agent-browser reload                      # Reload page
+agent-browser close                       # Close browser
+
+# Page analysis
+agent-browser snapshot -i                 # Get interactive elements with refs (@e1, @e2, ...)
+agent-browser snapshot                    # Full accessibility tree
+
+# Interaction (use @refs from snapshot)
+agent-browser click @e1                   # Click element
+agent-browser fill @e2 "text"             # Clear field and type
+agent-browser type @e2 "text"             # Type without clearing
+agent-browser select @e1 "value"          # Select dropdown option
+agent-browser check @e1                   # Check checkbox
+agent-browser press Enter                 # Press key
+agent-browser scroll down 500             # Scroll page (up/down/left/right)
+agent-browser hover @e1                   # Hover element
+
+# Wait
+agent-browser wait 2000                   # Wait milliseconds
+agent-browser wait --load networkidle     # Wait for network idle
+agent-browser wait @e1                    # Wait for element
+
+# Get info
+agent-browser get text @e1                # Get element text
+agent-browser get url                     # Get current URL
+agent-browser get title                   # Get page title
+
+# Capture
+agent-browser screenshot [path.png]       # Take screenshot
+agent-browser screenshot --full           # Full page screenshot
+
+# Recording
+agent-browser record start <path.webm>    # Start video recording
+agent-browser record stop                 # Stop and save video
 \`\`\`
 
-This gives you the exact command syntax for all browser automation. Use ONLY commands from the skill output.
-Do NOT guess or invent commands (e.g., never use "open-url" — the correct command is "open").
+Commands can be chained with && in a single bash call. The browser persists between commands.
 
 ## Step 2: Recording
 
@@ -144,10 +178,6 @@ const callOptionsSchema = z.object({
     .custom<SandboxExecutionContext["sandbox"]>()
     .describe("Sandbox for file system and shell operations"),
   model: z.custom<LanguageModel>().describe("Language model for this subagent"),
-  skills: z
-    .custom<SkillMetadata[]>()
-    .optional()
-    .describe("Available skills from the parent agent"),
 });
 
 export type ScreencastCallOptions = z.infer<typeof callOptionsSchema>;
@@ -157,7 +187,6 @@ export const screencastSubagent = new ToolLoopAgent({
   instructions: SCREENCAST_SYSTEM_PROMPT,
   tools: {
     bash: bashTool(),
-    skill: skillTool,
     synthesize_voiceover: synthesizeVoiceoverTool(),
     upload_blob: uploadBlobTool(),
   },
@@ -170,7 +199,6 @@ export const screencastSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? settings.model;
-    const skills = options.skills ?? [];
     return {
       ...settings,
       model,
@@ -188,12 +216,10 @@ ${options.instructions}
 ## REMINDER
 - You CANNOT ask questions — no one will respond
 - Complete the full recording pipeline before returning
-- Your FIRST action MUST be to invoke the agent-browser skill to learn the exact command syntax
 - Your final message MUST include the **Summary** and **Answer** with PR-embeddable markdown`,
       experimental_context: {
         sandbox,
         model,
-        skills,
       },
     };
   },
