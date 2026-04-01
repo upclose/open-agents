@@ -31,8 +31,12 @@ export function reconcileOptimisticPostTurnPhase({
   hasUncommittedChanges,
   hasUnpushedCommits,
 }: ReconcileOptimisticPostTurnPhaseParams): SessionPostTurnPhase | null {
-  if (sessionPostTurnPhase || !optimisticPhase) {
-    return optimisticPhase;
+  if (sessionPostTurnPhase) {
+    return sessionPostTurnPhase;
+  }
+
+  if (!optimisticPhase) {
+    return null;
   }
 
   if (optimisticPhase === "auto_commit") {
@@ -63,7 +67,6 @@ export function useAutoCommitStatus({
 }: UseAutoCommitStatusParams) {
   const [optimisticPhase, setOptimisticPhase] =
     useState<SessionPostTurnPhase | null>(null);
-  const serverPhaseSeenRef = useRef(false);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
@@ -72,7 +75,6 @@ export function useAutoCommitStatus({
       return;
     }
 
-    serverPhaseSeenRef.current = false;
     setOptimisticPhase("auto_commit");
   }, [autoCommitEnabled]);
 
@@ -81,20 +83,7 @@ export function useAutoCommitStatus({
   const hasUnpushedCommits = gitStatus?.hasUnpushedCommits ?? false;
 
   useEffect(() => {
-    if (!sessionPostTurnPhase) {
-      if (optimisticPhase && serverPhaseSeenRef.current) {
-        serverPhaseSeenRef.current = false;
-        setOptimisticPhase(null);
-      }
-      return;
-    }
-
-    serverPhaseSeenRef.current = true;
-  }, [sessionPostTurnPhase, optimisticPhase]);
-
-  useEffect(() => {
     if (!autoCommitEnabled && optimisticPhase) {
-      serverPhaseSeenRef.current = false;
       setOptimisticPhase(null);
     }
   }, [autoCommitEnabled, optimisticPhase]);
@@ -110,10 +99,6 @@ export function useAutoCommitStatus({
 
     if (nextOptimisticPhase === optimisticPhase) {
       return;
-    }
-
-    if (nextOptimisticPhase === null) {
-      serverPhaseSeenRef.current = false;
     }
 
     setOptimisticPhase(nextOptimisticPhase);
@@ -138,7 +123,6 @@ export function useAutoCommitStatus({
 
     const fallbackTimeout = setTimeout(() => {
       if (!sessionPostTurnPhase) {
-        serverPhaseSeenRef.current = false;
         setOptimisticPhase(null);
       }
     }, POST_TURN_OPTIMISTIC_TIMEOUT_MS);

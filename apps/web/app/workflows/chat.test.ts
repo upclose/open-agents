@@ -327,6 +327,33 @@ describe("runAgentWorkflow", () => {
     expect(spies.refreshDiffCache).toHaveBeenCalledTimes(1);
   });
 
+  test("closes the stream before starting post-turn git detection", async () => {
+    const sequence: string[] = [];
+
+    spies.clearActiveStream.mockImplementationOnce(() => {
+      sequence.push("clear");
+      return Promise.resolve();
+    });
+    spies.hasPendingGitWorkStep.mockImplementationOnce(() => {
+      sequence.push("git");
+      return Promise.resolve(true);
+    });
+    spies.updateSessionPostTurnPhase.mockImplementationOnce(() => {
+      sequence.push("phase");
+      return Promise.resolve();
+    });
+
+    await runAgentWorkflow(
+      makeOptions({
+        autoCommitEnabled: true,
+        repoOwner: "acme",
+        repoName: "repo",
+      }),
+    );
+
+    expect(sequence).toEqual(["clear", "git", "phase"]);
+  });
+
   test("runs auto-commit when enabled and not aborted", async () => {
     await runAgentWorkflow(
       makeOptions({

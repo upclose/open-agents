@@ -169,6 +169,14 @@ export async function runAgentWorkflow(options: Options) {
       sandboxState !== undefined &&
       repoOwner !== undefined &&
       repoName !== undefined;
+
+    // Close the stream immediately after generation so the UI is unblocked.
+    await Promise.all([
+      clearActiveStream(options.chatId, workflowRunId),
+      sendFinish(writable).then(() => closeStream(writable)),
+    ]);
+    streamClosed = true;
+
     const hasPendingGitWork = canAttemptAutoCommit
       ? await hasPendingGitWorkStep(sandboxState)
       : false;
@@ -178,13 +186,6 @@ export async function runAgentWorkflow(options: Options) {
       await updateSessionPostTurnPhase(options.sessionId, "auto_commit");
       shouldClearPostTurnPhaseInFinally = true;
     }
-
-    // Close the stream immediately after generation so the UI is unblocked.
-    await Promise.all([
-      clearActiveStream(options.chatId, workflowRunId),
-      sendFinish(writable).then(() => closeStream(writable)),
-    ]);
-    streamClosed = true;
 
     // --- Post-stream persistence & background work ---
 

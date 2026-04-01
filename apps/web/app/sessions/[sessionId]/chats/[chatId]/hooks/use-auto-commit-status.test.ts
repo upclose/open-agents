@@ -26,6 +26,30 @@ describe("reconcileOptimisticPostTurnPhase", () => {
     ).toBe("auto_commit");
   });
 
+  test("adopts the durable auto-pr phase for optimistic handoff", () => {
+    expect(
+      reconcileOptimisticPostTurnPhase({
+        sessionPostTurnPhase: "auto_pr",
+        optimisticPhase: "auto_commit",
+        hasExistingPr: false,
+        hasUncommittedChanges: false,
+        hasUnpushedCommits: false,
+      }),
+    ).toBe("auto_pr");
+  });
+
+  test("keeps optimistic auto-pr until PR metadata catches up", () => {
+    expect(
+      reconcileOptimisticPostTurnPhase({
+        sessionPostTurnPhase: null,
+        optimisticPhase: "auto_pr",
+        hasExistingPr: false,
+        hasUncommittedChanges: false,
+        hasUnpushedCommits: false,
+      }),
+    ).toBe("auto_pr");
+  });
+
   test("clears optimistic auto-pr once the PR appears", () => {
     expect(
       reconcileOptimisticPostTurnPhase({
