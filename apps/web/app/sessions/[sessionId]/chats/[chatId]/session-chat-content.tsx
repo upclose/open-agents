@@ -3843,23 +3843,46 @@ export function SessionChatContent({
           onMerged={handleMerged}
           onViewDiff={() => setShowDiffPanel(true)}
           canViewDiff={supportsDiff && Boolean(diff || session.cachedDiff)}
-          onFixChecks={(failedRuns) => {
+          onFixChecks={async (failedRuns) => {
             setMergeDialogOpen(false);
+
+            // Use check run IDs (same as GitHub Actions job IDs) to fetch logs
+            const runsWithIds = failedRuns.filter((r) => r.id > 0);
+
+            let logs: Record<string, string> = {};
+            if (runsWithIds.length > 0 && session) {
+              try {
+                const jobIds = runsWithIds.map((r) => r.id).join(",");
+                const res = await fetch(
+                  `/api/sessions/${session.id}/check-logs?jobIds=${jobIds}`,
+                );
+                if (res.ok) {
+                  const data = (await res.json()) as {
+                    logs: Record<string, string>;
+                  };
+                  logs = data.logs;
+                }
+              } catch {
+                // Continue without logs
+              }
+            }
 
             const sections = failedRuns.map((run) => {
               let section = `## ${run.name}`;
-              if (run.output?.title) {
-                section += `\n**${run.output.title}**`;
-              }
-              if (run.output?.summary) {
-                section += `\n${run.output.summary}`;
-              }
-              if (run.output?.text) {
-                section += `\n\n<details>\n<summary>Full output</summary>\n\n${run.output.text}\n</details>`;
-              }
               if (run.detailsUrl) {
                 section += `\n[View details](${run.detailsUrl})`;
               }
+
+              const logText = run.id > 0 ? logs[String(run.id)] : undefined;
+              if (logText && logText !== "(Unable to fetch logs)") {
+                const maxLen = 8000;
+                const truncated =
+                  logText.length > maxLen
+                    ? `${logText.slice(0, maxLen)}\n\n... (truncated, ${logText.length - maxLen} more characters)`
+                    : logText;
+                section += `\n\n\`\`\`\n${truncated}\n\`\`\``;
+              }
+
               return section;
             });
 

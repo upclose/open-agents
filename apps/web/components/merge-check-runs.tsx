@@ -263,7 +263,7 @@ interface CheckRunsListProps {
   /** True on initial load before any data arrives */
   isLoading?: boolean;
   /** Called when the user clicks "Fix errors" — receives all failing check runs */
-  onFixChecks?: (failedRuns: PullRequestCheckRun[]) => void;
+  onFixChecks?: (failedRuns: PullRequestCheckRun[]) => Promise<void> | void;
 }
 
 export function CheckRunsList({

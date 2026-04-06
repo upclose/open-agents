@@ -42,7 +42,7 @@ interface MergePrDialogProps {
   onViewDiff?: () => void;
   canViewDiff?: boolean;
   /** Called when the user clicks "Fix errors" — receives all failing check runs */
-  onFixChecks?: (failedRuns: PullRequestCheckRun[]) => void;
+  onFixChecks?: (failedRuns: PullRequestCheckRun[]) => Promise<void> | void;
 }
 
 const mergeMethodLabels: Record<PullRequestMergeMethod, string> = {
