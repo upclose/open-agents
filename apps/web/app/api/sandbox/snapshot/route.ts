@@ -44,6 +44,15 @@ function isResumeTargetMissingError(message: string): boolean {
   );
 }
 
+function isSandboxNameConflictError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("already exists") ||
+    normalized.includes("status code 409") ||
+    normalized.includes("conflict")
+  );
+}
+
 /**
  * POST - Pause the current sandbox session while preserving any durable persistent sandbox identity.
  */
@@ -213,6 +222,10 @@ export async function PUT(req: Request) {
   }
 
   try {
+    let restoredFrom: string | null = hasPersistentSandbox
+      ? sandboxName
+      : sessionRecord.snapshotUrl;
+
     const sandbox = hasPersistentSandbox
       ? await connectSandbox(
           {
@@ -224,17 +237,65 @@ export async function PUT(req: Request) {
             resume: true,
           },
         )
-      : await connectSandbox(
-          {
-            type: sandboxType,
-            sandboxName,
-            snapshotId: sessionRecord.snapshotUrl ?? undefined,
-          },
-          {
-            timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-            ports: DEFAULT_SANDBOX_PORTS,
-          },
-        );
+      : await (async () => {
+          try {
+            const existingSandbox = await connectSandbox(
+              {
+                type: sandboxType,
+                sandboxName,
+              },
+              {
+                ports: DEFAULT_SANDBOX_PORTS,
+                resume: true,
+              },
+            );
+            restoredFrom = sandboxName;
+            return existingSandbox;
+          } catch (resumeError) {
+            const message =
+              resumeError instanceof Error
+                ? resumeError.message
+                : String(resumeError);
+            if (!isResumeTargetMissingError(message)) {
+              throw resumeError;
+            }
+          }
+
+          try {
+            return await connectSandbox(
+              {
+                type: sandboxType,
+                sandboxName,
+                snapshotId: sessionRecord.snapshotUrl ?? undefined,
+              },
+              {
+                timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+                ports: DEFAULT_SANDBOX_PORTS,
+              },
+            );
+          } catch (createError) {
+            const message =
+              createError instanceof Error
+                ? createError.message
+                : String(createError);
+            if (!isSandboxNameConflictError(message)) {
+              throw createError;
+            }
+
+            const existingSandbox = await connectSandbox(
+              {
+                type: sandboxType,
+                sandboxName,
+              },
+              {
+                ports: DEFAULT_SANDBOX_PORTS,
+                resume: true,
+              },
+            );
+            restoredFrom = sandboxName;
+            return existingSandbox;
+          }
+        })();
 
     const newState = sandbox.getState?.();
     const restoredState = (newState ?? {
@@ -256,14 +317,12 @@ export async function PUT(req: Request) {
     });
 
     console.log(
-      `[Snapshot Restore] session=${sessionId} success=true sandboxType=${sandboxType} sandboxName=${"name" in sandbox ? sandbox.name : "n/a"} restoredFrom=${hasPersistentSandbox ? sandboxName : sessionRecord.snapshotUrl}`,
+      `[Snapshot Restore] session=${sessionId} success=true sandboxType=${sandboxType} sandboxName=${"name" in sandbox ? sandbox.name : "n/a"} restoredFrom=${restoredFrom}`,
     );
 
     return Response.json({
       success: true,
-      restoredFrom: hasPersistentSandbox
-        ? sandboxName
-        : sessionRecord.snapshotUrl,
+      restoredFrom,
       sandboxName: "name" in sandbox ? sandbox.name : undefined,
     });
   } catch (error) {
