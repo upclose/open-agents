@@ -66,13 +66,15 @@ export function useInlineQuestion({
             answers: { ...prev.answers, [question.question]: newArray },
           };
         } else {
-          onTextareaChange("");
           return {
             ...prev,
             answers: { ...prev.answers, [question.question]: optionLabel },
           };
         }
       });
+      if (!question.multiSelect) {
+        onTextareaChange("");
+      }
     },
     [onTextareaChange],
   );
