@@ -1,8 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Image from "next/image";
 import useSWR from "swr";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -209,17 +213,14 @@ export function LeaderboardSection() {
                       </TableCell>
                       <TableCell className="whitespace-normal">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          {row.avatarUrl ? (
-                            <Image
-                              src={row.avatarUrl}
-                              alt={row.username}
-                              width={28}
-                              height={28}
-                              className="h-7 w-7 shrink-0 rounded-full"
-                            />
-                          ) : (
-                            <div className="h-7 w-7 shrink-0 rounded-full bg-muted" />
-                          )}
+                          <Avatar className="size-7 text-xs">
+                            {row.avatarUrl && (
+                              <AvatarImage src={row.avatarUrl} alt={row.username} />
+                            )}
+                            <AvatarFallback>
+                              {(row.name?.trim()?.[0] ?? row.username[0] ?? "?").toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
                           <div className="min-w-0">
                             <div className="font-medium">
                               {row.name?.trim() || row.username}
