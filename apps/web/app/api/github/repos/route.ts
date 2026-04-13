@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCachedGitHubRepos } from "@/lib/github/cached-api";
 import { getRepoToken } from "@/lib/github/get-repo-token";
 import { getCachedInstallationRepositories } from "@/lib/github/installation-repos";
+import { withNoStoreHeaders } from "@/lib/no-store";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 export async function GET(request: NextRequest) {
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json(
       { error: "GitHub not connected" },
-      { status: 401 },
+      withNoStoreHeaders({ status: 401 }),
     );
   }
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
   if (!owner) {
     return NextResponse.json(
       { error: "Owner parameter is required" },
-      { status: 400 },
+      withNoStoreHeaders({ status: 400 }),
     );
   }
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
   } catch {
     return NextResponse.json(
       { error: "GitHub not connected" },
-      { status: 401 },
+      withNoStoreHeaders({ status: 401 }),
     );
   }
 
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
         query,
       });
 
-      return NextResponse.json(repos);
+      return NextResponse.json(repos, withNoStoreHeaders());
     }
 
     const repos = await getCachedGitHubRepos(
@@ -68,16 +69,16 @@ export async function GET(request: NextRequest) {
     if (!repos) {
       return NextResponse.json(
         { error: "Failed to fetch repositories" },
-        { status: 500 },
+        withNoStoreHeaders({ status: 500 }),
       );
     }
 
-    return NextResponse.json(repos);
+    return NextResponse.json(repos, withNoStoreHeaders());
   } catch (error) {
     console.error("Error fetching repositories:", error);
     return NextResponse.json(
       { error: "Failed to fetch repositories" },
-      { status: 500 },
+      withNoStoreHeaders({ status: 500 }),
     );
   }
 }

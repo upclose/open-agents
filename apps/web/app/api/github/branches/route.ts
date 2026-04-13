@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCachedGitHubBranches } from "@/lib/github/cached-api";
 import { getRepoToken } from "@/lib/github/get-repo-token";
+import { withNoStoreHeaders } from "@/lib/no-store";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 interface RepoInfo {
@@ -94,6 +95,10 @@ function getGitHubHeaders(token?: string): HeadersInit {
     "X-GitHub-Api-Version": "2022-11-28",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+function json(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, withNoStoreHeaders(init));
 }
 
 async function fetchGitHubRepoInfo(
@@ -265,10 +270,7 @@ export async function GET(request: NextRequest) {
   const session = await getServerSession();
 
   if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: "GitHub not connected" },
-      { status: 401 },
-    );
+    return json({ error: "GitHub not connected" }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -280,7 +282,7 @@ export async function GET(request: NextRequest) {
   const query = searchParams.get("query")?.trim() || undefined;
 
   if (!owner || !repo) {
-    return NextResponse.json(
+    return json(
       { error: "Owner and repo parameters are required" },
       { status: 400 },
     );
@@ -313,7 +315,7 @@ export async function GET(request: NextRequest) {
           );
 
       if (result) {
-        return NextResponse.json(result);
+        return json(result);
       }
     }
 
@@ -324,18 +326,12 @@ export async function GET(request: NextRequest) {
       query,
     );
     if (publicResult) {
-      return NextResponse.json(publicResult);
+      return json(publicResult);
     }
 
-    return NextResponse.json(
-      { error: "Failed to fetch branches" },
-      { status: 500 },
-    );
+    return json({ error: "Failed to fetch branches" }, { status: 500 });
   } catch (error) {
     console.error("Error fetching branches:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch branches" },
-      { status: 500 },
-    );
+    return json({ error: "Failed to fetch branches" }, { status: 500 });
   }
 }

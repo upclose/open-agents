@@ -2,12 +2,12 @@
 
 import useSWR from "swr";
 import type { SessionUserInfo } from "@/lib/session/types";
-import { fetcher } from "@/lib/swr";
+import { fetcherNoStore } from "@/lib/swr";
 
 export function useSession() {
   const { data, isLoading } = useSWR<SessionUserInfo>(
     "/api/auth/info",
-    fetcher,
+    fetcherNoStore,
     {
       revalidateOnFocus: true,
     },

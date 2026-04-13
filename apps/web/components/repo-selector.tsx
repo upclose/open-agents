@@ -111,7 +111,9 @@ export function RepoSelector({
       setOwnersLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/github/installations");
+        const response = await fetch("/api/github/installations", {
+          cache: "no-store",
+        });
         if (!response.ok) {
           const data = await response.json().catch(() => null);
           const parsed = z

@@ -5,6 +5,7 @@ import {
   getCachedInstallationRepositories,
   getInstallationReposCacheTag,
 } from "@/lib/github/installation-repos";
+import { withNoStoreHeaders } from "@/lib/no-store";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 function parseInstallationId(value: string | null): number | null {
@@ -24,7 +25,10 @@ export async function GET(request: NextRequest) {
   const session = await getServerSession();
 
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Not authenticated" },
+      withNoStoreHeaders({ status: 401 }),
+    );
   }
 
   const { searchParams } = new URL(request.url);
@@ -43,7 +47,7 @@ export async function GET(request: NextRequest) {
   if (!installationId) {
     return NextResponse.json(
       { error: "installation_id is required" },
-      { status: 400 },
+      withNoStoreHeaders({ status: 400 }),
     );
   }
 
@@ -54,7 +58,7 @@ export async function GET(request: NextRequest) {
   if (!installation) {
     return NextResponse.json(
       { error: "Installation not found" },
-      { status: 403 },
+      withNoStoreHeaders({ status: 403 }),
     );
   }
 
@@ -72,12 +76,12 @@ export async function GET(request: NextRequest) {
       owner: installation.accountLogin,
     });
 
-    return NextResponse.json(repos);
+    return NextResponse.json(repos, withNoStoreHeaders());
   } catch (error) {
     console.error("Failed to fetch installation repositories:", error);
     return NextResponse.json(
       { error: "Failed to fetch repositories" },
-      { status: 500 },
+      withNoStoreHeaders({ status: 500 }),
     );
   }
 }

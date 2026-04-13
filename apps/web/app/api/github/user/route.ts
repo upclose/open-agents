@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "@/lib/session/get-server-session";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getCachedGitHubUser } from "@/lib/github/cached-api";
+import { withNoStoreHeaders } from "@/lib/no-store";
+import { getServerSession } from "@/lib/session/get-server-session";
 
 export async function GET() {
   const session = await getServerSession();
@@ -9,7 +10,7 @@ export async function GET() {
   if (!session?.user?.id) {
     return NextResponse.json(
       { error: "GitHub not connected" },
-      { status: 401 },
+      withNoStoreHeaders({ status: 401 }),
     );
   }
 
@@ -18,7 +19,7 @@ export async function GET() {
   if (!token) {
     return NextResponse.json(
       { error: "GitHub not connected" },
-      { status: 401 },
+      withNoStoreHeaders({ status: 401 }),
     );
   }
 
@@ -28,16 +29,16 @@ export async function GET() {
     if (!user) {
       return NextResponse.json(
         { error: "Failed to fetch user" },
-        { status: 500 },
+        withNoStoreHeaders({ status: 500 }),
       );
     }
 
-    return NextResponse.json(user);
+    return NextResponse.json(user, withNoStoreHeaders());
   } catch (error) {
     console.error("Error fetching GitHub user:", error);
     return NextResponse.json(
       { error: "Failed to fetch user" },
-      { status: 500 },
+      withNoStoreHeaders({ status: 500 }),
     );
   }
 }

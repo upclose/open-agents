@@ -96,7 +96,9 @@ function getCurrentPathWithSearch(): string {
 }
 
 async function fetchInstallations(): Promise<Installation[]> {
-  const response = await fetch("/api/github/installations");
+  const response = await fetch("/api/github/installations", {
+    cache: "no-store",
+  });
   if (!response.ok) {
     return [];
   }

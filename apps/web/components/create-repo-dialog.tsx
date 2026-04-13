@@ -55,7 +55,9 @@ interface Installation {
 }
 
 async function fetchInstallations(): Promise<Installation[]> {
-  const response = await fetch("/api/github/installations");
+  const response = await fetch("/api/github/installations", {
+    cache: "no-store",
+  });
   if (!response.ok) return [];
   const data = await response.json();
   return Array.isArray(data) ? data : [];

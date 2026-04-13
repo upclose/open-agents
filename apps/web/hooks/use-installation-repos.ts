@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { z } from "zod";
-import { fetcher } from "@/lib/swr";
+import { fetcherNoStore } from "@/lib/swr";
 
 const installationRepoSchema = z.object({
   name: z.string(),
@@ -33,7 +33,7 @@ interface UseInstallationReposReturn {
 async function fetchInstallationRepos(
   url: string,
 ): Promise<InstallationRepo[]> {
-  const json = await fetcher<unknown>(url);
+  const json = await fetcherNoStore<unknown>(url);
   const parsed = installationReposSchema.safeParse(json);
   if (!parsed.success) {
     throw new Error("Invalid repositories response");

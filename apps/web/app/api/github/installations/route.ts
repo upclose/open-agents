@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { getInstallationsByUserId } from "@/lib/db/installations";
 import { getInstallationManageUrl } from "@/lib/github/installation-url";
+import { withNoStoreHeaders } from "@/lib/no-store";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 export async function GET() {
   const session = await getServerSession();
 
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Not authenticated" },
+      withNoStoreHeaders({ status: 401 }),
+    );
   }
 
   try {
@@ -24,12 +28,13 @@ export async function GET() {
           installation.installationUrl,
         ),
       })),
+      withNoStoreHeaders(),
     );
   } catch (error) {
     console.error("Failed to fetch GitHub installations:", error);
     return NextResponse.json(
       { error: "Failed to fetch installations" },
-      { status: 500 },
+      withNoStoreHeaders({ status: 500 }),
     );
   }
 }
