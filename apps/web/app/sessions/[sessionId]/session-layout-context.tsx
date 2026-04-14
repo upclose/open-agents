@@ -12,6 +12,8 @@ type CreateChatResult = {
 type SessionLayoutContextValue = {
   session: {
     title: string;
+    automationId: string | null;
+    runSource: string;
     repoName: string | null;
     repoOwner: string | null;
     cloneUrl: string | null;
@@ -21,6 +23,8 @@ type SessionLayoutContextValue = {
     prStatus: string | null;
     linesAdded: number | null;
     linesRemoved: number | null;
+    automationRunStatus?: string | null;
+    automationNeedsAttentionReason?: string | null;
   };
   chats: SessionChatListItem[];
   chatsLoading: boolean;

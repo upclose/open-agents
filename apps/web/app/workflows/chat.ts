@@ -54,6 +54,12 @@ type Options = {
   repoOwner?: string;
   /** GitHub repo name (required for auto-commit). */
   repoName?: string;
+  automationId?: string;
+  /** Automation run context for unattended executions. */
+  automationRunId?: string;
+  automationUnattended?: boolean;
+  automationEnabledToolTypes?: string[];
+  autoCreatePrDraft?: boolean;
 };
 
 type Writable = WritableStream<UIMessageChunk>;
@@ -380,6 +386,113 @@ function buildPrData(
   };
 }
 
+function getAutomationSummary(message: WebAgentUIMessage): string | null {
+  const summary = message.parts
+    .filter(
+      (
+        part,
+      ): part is Extract<
+        WebAgentUIMessage["parts"][number],
+        { type: "text" }
+      > => part.type === "text" && typeof part.text === "string",
+    )
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (!summary) {
+    return null;
+  }
+
+  return summary.length > 280 ? `${summary.slice(0, 277)}...` : summary;
+}
+
+function getAutomationNeedsAttentionReason(
+  message: WebAgentUIMessage,
+): string | null {
+  for (const part of message.parts) {
+    if (
+      isToolUIPart(part) &&
+      part.type === "tool-ask_user_question" &&
+      part.state === "output-available" &&
+      typeof part.output === "object" &&
+      part.output !== null &&
+      "automationNeedsAttention" in part.output &&
+      part.output.automationNeedsAttention === true
+    ) {
+      const questions = Array.isArray(
+        (part.output as { questions?: unknown }).questions,
+      )
+        ? ((
+            part.output as { questions: Array<{ question?: unknown }> }
+          ).questions
+            .map((question) =>
+              typeof question.question === "string" ? question.question : null,
+            )
+            .filter(Boolean) as string[])
+        : [];
+
+      if (questions.length > 0) {
+        return questions.join(" ");
+      }
+
+      return "This run needs human input before it can continue.";
+    }
+  }
+
+  return null;
+}
+
+function getAutomationPrMetadata(message: WebAgentUIMessage): {
+  prNumber: number | null;
+  prUrl: string | null;
+  compareUrl: string | null;
+  needsAttentionReason: string | null;
+} {
+  const prPart = message.parts.find(
+    (
+      part,
+    ): part is Extract<
+      WebAgentUIMessage["parts"][number],
+      { type: "data-pr" }
+    > => part.type === "data-pr",
+  );
+
+  if (!prPart) {
+    return {
+      prNumber: null,
+      prUrl: null,
+      compareUrl: null,
+      needsAttentionReason: null,
+    };
+  }
+
+  const compareUrl = prPart.data.requiresManualCreation
+    ? (prPart.data.url ?? null)
+    : null;
+  const prUrl = prPart.data.requiresManualCreation
+    ? null
+    : (prPart.data.url ?? null);
+
+  const needsAttentionReason =
+    prPart.data.status === "error"
+      ? (prPart.data.error ?? "Opening a pull request failed.")
+      : prPart.data.status === "skipped"
+        ? (prPart.data.skipReason ??
+          "Opening a pull request needs manual attention.")
+        : prPart.data.requiresManualCreation
+          ? "Pull request creation requires a manual compare flow."
+          : null;
+
+  return {
+    prNumber: prPart.data.prNumber ?? null,
+    prUrl,
+    compareUrl,
+    needsAttentionReason,
+  };
+}
+
 function upsertAssistantDataPart(
   message: WebAgentUIMessage,
   part:
@@ -433,6 +546,23 @@ async function sendDataPart(
   } finally {
     writer.releaseLock();
   }
+}
+
+async function finalizeAutomationRunStep(params: {
+  runId: string;
+  automationId: string;
+  status: "completed" | "failed" | "needs_attention" | "cancelled";
+  resultSummary?: string | null;
+  workflowRunId?: string | null;
+  prNumber?: number | null;
+  prUrl?: string | null;
+  compareUrl?: string | null;
+  error?: string | null;
+  needsAttentionReason?: string | null;
+}) {
+  "use step";
+  const { finalizeAutomationRun } = await import("@/lib/db/automations");
+  await finalizeAutomationRun(params);
 }
 
 export async function runAgentWorkflow(options: Options) {
@@ -659,6 +789,7 @@ export async function runAgentWorkflow(options: Options) {
           repoOwner,
           repoName,
           sandboxState,
+          isDraft: options.autoCreatePrDraft,
         });
 
         const resolvedPrPart = {
@@ -743,6 +874,54 @@ export async function runAgentWorkflow(options: Options) {
           stepTimings,
         },
       );
+
+      if (options.automationRunId && options.automationId) {
+        const questionNeedsAttentionReason = getAutomationNeedsAttentionReason(
+          pendingAssistantResponse,
+        );
+        const prMetadata = getAutomationPrMetadata(pendingAssistantResponse);
+        const automationStatus =
+          questionNeedsAttentionReason || prMetadata.needsAttentionReason
+            ? "needs_attention"
+            : workflowStatus === "aborted"
+              ? "cancelled"
+              : workflowStatus === "failed"
+                ? "failed"
+                : "completed";
+        const fallbackError =
+          caughtError instanceof Error ? caughtError.message : null;
+        const resultSummary =
+          questionNeedsAttentionReason ??
+          prMetadata.needsAttentionReason ??
+          getAutomationSummary(pendingAssistantResponse) ??
+          fallbackError;
+
+        try {
+          await finalizeAutomationRunStep({
+            runId: options.automationRunId,
+            automationId: options.automationId ?? "",
+            status: automationStatus,
+            resultSummary,
+            workflowRunId,
+            prNumber: prMetadata.prNumber,
+            prUrl: prMetadata.prUrl,
+            compareUrl: prMetadata.compareUrl,
+            error:
+              automationStatus === "failed"
+                ? fallbackError
+                : prMetadata.needsAttentionReason
+                  ? null
+                  : fallbackError,
+            needsAttentionReason:
+              questionNeedsAttentionReason ?? prMetadata.needsAttentionReason,
+          });
+        } catch (error) {
+          console.error(
+            `[workflow] Failed to finalize automation run ${options.automationRunId}:`,
+            error,
+          );
+        }
+      }
     }
   }
 

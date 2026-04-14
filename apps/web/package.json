@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "bun run db:migrate:apply && next dev",
     "build": "bun run db:migrate:apply && next build",
     "db:migrate:apply": "bun run lib/db/migrate.ts",
     "start": "next start",

@@ -23,6 +23,7 @@ export interface AutoCreatePrParams {
   sessionTitle: string;
   repoOwner: string;
   repoName: string;
+  isDraft?: boolean;
 }
 
 export interface AutoCreatePrResult {
@@ -308,6 +309,7 @@ export async function performAutoCreatePr(
     title: prContentResult.title,
     body: prContentResult.body,
     baseBranch: defaultBranch,
+    isDraft: params.isDraft ?? false,
     token: userToken,
   });
 

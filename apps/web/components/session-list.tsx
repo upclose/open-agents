@@ -121,8 +121,13 @@ export function SessionList({
                       <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
                     ) : null}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">
-                        {session.title}
+                      <p className="flex min-w-0 items-center font-medium text-foreground">
+                        <span className="truncate">{session.title}</span>
+                        {session.runSource === "automation" ? (
+                          <span className="ml-2 inline-flex items-center rounded-full border border-border px-1.5 py-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Automation
+                          </span>
+                        ) : null}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {formatTime(new Date(session.createdAt))}

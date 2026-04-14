@@ -21,6 +21,10 @@ export interface AgentContext {
   skills?: SkillMetadata[];
   model: LanguageModel;
   subagentModel?: LanguageModel;
+  automation?: {
+    unattended: boolean;
+    enabledToolTypes: string[];
+  };
 }
 
 export interface SandboxExecutionContext {

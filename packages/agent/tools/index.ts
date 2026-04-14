@@ -11,6 +11,7 @@ export {
   type TaskToolUIPart,
 } from "./task";
 export {
+  createAskUserQuestionTool,
   askUserQuestionTool,
   type AskUserQuestionToolUIPart,
   type AskUserQuestionInput,

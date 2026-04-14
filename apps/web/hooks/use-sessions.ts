@@ -11,6 +11,8 @@ export type SessionWithUnread = Pick<
   Session,
   | "id"
   | "title"
+  | "automationId"
+  | "runSource"
   | "status"
   | "repoOwner"
   | "repoName"
@@ -70,6 +72,8 @@ function mergeSessionWithSummary(
   return {
     id: updatedSession.id,
     title: updatedSession.title,
+    automationId: updatedSession.automationId,
+    runSource: updatedSession.runSource,
     status: updatedSession.status,
     repoOwner: updatedSession.repoOwner,
     repoName: updatedSession.repoName,

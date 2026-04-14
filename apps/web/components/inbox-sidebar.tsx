@@ -509,13 +509,18 @@ const SessionRow = memo(function SessionRow({
       </span>
       <span className="min-w-0 flex-1 text-left">
         <p
-          className={`truncate text-[13px] leading-5 ${
+          className={`flex min-w-0 items-center text-[13px] leading-5 ${
             session.hasUnread && !isActive
               ? "font-semibold text-foreground"
               : "font-normal text-foreground/75"
           }`}
         >
-          {session.title}
+          <span className="truncate">{session.title}</span>
+          {session.runSource === "automation" ? (
+            <span className="ml-2 inline-flex shrink-0 items-center rounded-full border border-border px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Automation
+            </span>
+          ) : null}
         </p>
       </span>
       <span className="flex shrink-0 items-center justify-end gap-0.5">
@@ -624,6 +629,8 @@ function areSessionRowsEqual(
   return (
     prev.session.id === next.session.id &&
     prev.session.title === next.session.title &&
+    prev.session.runSource === next.session.runSource &&
+    prev.session.automationId === next.session.automationId &&
     prev.session.hasStreaming === next.session.hasStreaming &&
     prev.session.hasUnread === next.session.hasUnread &&
     prev.session.repoOwner === next.session.repoOwner &&
@@ -1196,6 +1203,16 @@ export function InboxSidebar({
                 <span className="mt-1 block h-4 w-24 animate-pulse rounded bg-muted" />
               ) : null}
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => router.push("/automations")}
+              aria-label="Open automations"
+            >
+              <FolderGit2 className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant="ghost"

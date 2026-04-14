@@ -1,7 +1,6 @@
 import { checkBotId } from "botid/server";
 import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
 import { botIdConfig } from "@/lib/botid";
-import { start } from "workflow/api";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
   compareAndSetChatActiveStreamId,
@@ -14,10 +13,8 @@ import {
   updateChat,
   updateSession,
 } from "@/lib/db/sessions";
-import { getUserPreferences } from "@/lib/db/user-preferences";
-import { getAllVariants } from "@/lib/model-variants";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
-import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
+import { startSessionChatWorkflow } from "@/lib/chat/start-session-chat-workflow";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   isManagedTemplateTrialUser,
@@ -29,10 +26,7 @@ import {
   requireAuthenticatedUser,
   requireOwnedSessionChat,
 } from "./_lib/chat-context";
-import { resolveChatModelSelection } from "./_lib/model-selection";
 import { parseChatRequestBody, requireChatIdentifiers } from "./_lib/request";
-import { createChatRuntime } from "./_lib/runtime";
-import { runAgentWorkflow } from "@/app/workflows/chat";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
 export const maxDuration = 800;
@@ -92,8 +86,7 @@ export async function POST(req: Request) {
   }
 
   const { sessionRecord, chat } = chatContext;
-  const activeSandboxState = sessionRecord.sandboxState;
-  if (!activeSandboxState) {
+  if (!sessionRecord.sandboxState) {
     throw new Error("Sandbox not initialized");
   }
 
@@ -157,100 +150,12 @@ export async function POST(req: Request) {
   // would lose the tool result.
   void persistAssistantMessagesWithToolResults(chatId, messages);
 
-  const runtimePromise = createChatRuntime({
+  const { runId, run } = await startSessionChatWorkflow({
     userId,
-    sessionId,
     sessionRecord,
+    chat,
+    messages,
   });
-  const preferencesPromise = getUserPreferences(userId).catch((error) => {
-    console.error("Failed to load user preferences:", error);
-    return null;
-  });
-
-  const [{ sandbox, skills }, preferences] = await Promise.all([
-    runtimePromise,
-    preferencesPromise,
-  ]);
-
-  const modelVariants = getAllVariants(preferences?.modelVariants ?? []);
-  const mainModelSelection = resolveChatModelSelection({
-    selectedModelId: chat.modelId,
-    modelVariants,
-    missingVariantLabel: "Selected model variant",
-  });
-  const subagentModelSelection = preferences?.defaultSubagentModelId
-    ? resolveChatModelSelection({
-        selectedModelId: preferences.defaultSubagentModelId,
-        modelVariants,
-        missingVariantLabel: "Subagent model variant",
-      })
-    : undefined;
-
-  // Determine if auto-commit and auto-PR should run after a natural finish.
-  const shouldAutoCommitPush =
-    sessionRecord.autoCommitPushOverride ??
-    preferences?.autoCommitPush ??
-    false;
-  const shouldAutoCreatePr =
-    shouldAutoCommitPush &&
-    (sessionRecord.autoCreatePrOverride ?? preferences?.autoCreatePr ?? false);
-
-  // Start the durable workflow
-  const run = await start(runAgentWorkflow, [
-    {
-      messages,
-      chatId,
-      sessionId,
-      userId,
-      modelId: mainModelSelection.id,
-      maxSteps: 500,
-      agentOptions: {
-        sandbox: {
-          state: activeSandboxState,
-          workingDirectory: sandbox.workingDirectory,
-          currentBranch: sandbox.currentBranch,
-          environmentDetails: sandbox.environmentDetails,
-        },
-        model: mainModelSelection,
-        ...(subagentModelSelection
-          ? { subagentModel: subagentModelSelection }
-          : {}),
-        ...(skills.length > 0 && { skills }),
-        customInstructions: assistantFileLinkPrompt,
-      },
-      ...(shouldAutoCommitPush &&
-        sessionRecord.repoOwner &&
-        sessionRecord.repoName && {
-          autoCommitEnabled: true,
-          autoCreatePrEnabled: shouldAutoCreatePr,
-          sessionTitle: sessionRecord.title,
-          repoOwner: sessionRecord.repoOwner,
-          repoName: sessionRecord.repoName,
-        }),
-    },
-  ]);
-
-  // Atomically claim the activeStreamId slot. If another request raced us and
-  // already set it, cancel the workflow we just started and reconnect instead.
-  const claimed = await compareAndSetChatActiveStreamId(
-    chatId,
-    null,
-    run.runId,
-  );
-
-  if (!claimed) {
-    // Another request won the race — cancel our duplicate workflow.
-    try {
-      const { getRun } = await import("workflow/api");
-      getRun(run.runId).cancel();
-    } catch {
-      // Best-effort cleanup.
-    }
-    return Response.json(
-      { error: "Another workflow is already running for this chat" },
-      { status: 409 },
-    );
-  }
 
   const stream = createCancelableReadableStream(
     run.getReadable<WebAgentUIMessageChunk>(),
@@ -259,7 +164,7 @@ export async function POST(req: Request) {
   return createUIMessageStreamResponse({
     stream,
     headers: {
-      "x-workflow-run-id": run.runId,
+      "x-workflow-run-id": runId,
     },
   });
 }

@@ -175,6 +175,8 @@ type SessionSidebarFields = Pick<
   typeof sessions.$inferSelect,
   | "id"
   | "title"
+  | "automationId"
+  | "runSource"
   | "status"
   | "repoOwner"
   | "repoName"
@@ -222,6 +224,8 @@ export async function getSessionsWithUnreadByUserId(
     .select({
       id: sessions.id,
       title: sessions.title,
+      automationId: sessions.automationId,
+      runSource: sessions.runSource,
       status: sessions.status,
       repoOwner: sessions.repoOwner,
       repoName: sessions.repoName,

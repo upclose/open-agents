@@ -25,6 +25,10 @@ import { SessionLayoutContext } from "./session-layout-context";
 
 type SessionLayoutShellProps = {
   session: Session;
+  automationRun?: {
+    status: string | null;
+    needsAttentionReason: string | null;
+  } | null;
   initialChatsData?: {
     defaultModelId: string | null;
     chats: SessionChatListItem[];
@@ -79,6 +83,7 @@ function SessionLayoutInner({
 
 export function SessionLayoutShell({
   session: initialSession,
+  automationRun,
   initialChatsData,
   children,
 }: SessionLayoutShellProps) {
@@ -152,6 +157,8 @@ export function SessionLayoutShell({
     () => ({
       session: {
         title: initialSession.title,
+        automationId: initialSession.automationId,
+        runSource: initialSession.runSource,
         repoName: initialSession.repoName,
         repoOwner: initialSession.repoOwner,
         cloneUrl: initialSession.cloneUrl,
@@ -161,6 +168,9 @@ export function SessionLayoutShell({
         prStatus: initialSession.prStatus ?? null,
         linesAdded: initialSession.linesAdded,
         linesRemoved: initialSession.linesRemoved,
+        automationRunStatus: automationRun?.status ?? null,
+        automationNeedsAttentionReason:
+          automationRun?.needsAttentionReason ?? null,
       },
       chats,
       chatsLoading,
@@ -177,6 +187,8 @@ export function SessionLayoutShell({
       switchChat,
       deleteChat,
       renameChat,
+      automationRun?.needsAttentionReason,
+      automationRun?.status,
     ],
   );
 

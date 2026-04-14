@@ -1,4 +1,13 @@
 import type { SandboxState } from "@open-harness/sandbox";
+import type {
+  AutomationConnectionConfig,
+  AutomationRunStatus,
+  AutomationRunTrigger,
+  AutomationToolConfig,
+  AutomationToolType,
+  AutomationTriggerConfig,
+  AutomationTriggerType,
+} from "@/lib/automations/types";
 import type { ModelVariant } from "@/lib/model-variants";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 import {
@@ -123,6 +132,133 @@ export const vercelProjectLinks = pgTable(
   ],
 );
 
+export const automations = pgTable(
+  "automations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    instructions: text("instructions").notNull(),
+    repoOwner: text("repo_owner").notNull(),
+    repoName: text("repo_name").notNull(),
+    cloneUrl: text("clone_url"),
+    baseBranch: text("base_branch").notNull(),
+    modelId: text("model_id").notNull().default("anthropic/claude-haiku-4.5"),
+    enabled: boolean("enabled").notNull().default(true),
+    executionEnvironment: text("execution_environment", {
+      enum: ["vercel"],
+    })
+      .notNull()
+      .default("vercel"),
+    visibility: text("visibility", {
+      enum: ["private"],
+    })
+      .notNull()
+      .default("private"),
+    globalSkillRefs: jsonb("global_skill_refs")
+      .$type<GlobalSkillRef[]>()
+      .notNull()
+      .default([]),
+    lastRunAt: timestamp("last_run_at"),
+    nextRunAt: timestamp("next_run_at"),
+    schedulerRunId: text("scheduler_run_id"),
+    schedulerState: text("scheduler_state", {
+      enum: ["idle", "scheduled", "running", "paused"],
+    })
+      .notNull()
+      .default("idle"),
+    lastRunStatus: text("last_run_status", {
+      enum: [
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "needs_attention",
+        "cancelled",
+      ],
+    }),
+    lastRunSummary: text("last_run_summary"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("automations_user_id_idx").on(table.userId),
+    index("automations_next_run_at_idx").on(table.nextRunAt),
+  ],
+);
+
+export const automationTriggers = pgTable(
+  "automation_triggers",
+  {
+    id: text("id").primaryKey(),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automations.id, { onDelete: "cascade" }),
+    type: text("type", {
+      enum: ["cron", "manual"],
+    })
+      .notNull()
+      .$type<AutomationTriggerType>(),
+    enabled: boolean("enabled").notNull().default(true),
+    config: jsonb("config").$type<AutomationTriggerConfig>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("automation_triggers_automation_id_idx").on(table.automationId),
+  ],
+);
+
+export const automationTools = pgTable(
+  "automation_tools",
+  {
+    id: text("id").primaryKey(),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automations.id, { onDelete: "cascade" }),
+    toolType: text("tool_type", {
+      enum: ["open_pull_request"],
+    })
+      .notNull()
+      .$type<AutomationToolType>(),
+    enabled: boolean("enabled").notNull().default(true),
+    config: jsonb("config").$type<AutomationToolConfig>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("automation_tools_automation_id_idx").on(table.automationId),
+    uniqueIndex("automation_tools_automation_tool_type_idx").on(
+      table.automationId,
+      table.toolType,
+    ),
+  ],
+);
+
+export const automationConnections = pgTable(
+  "automation_connections",
+  {
+    id: text("id").primaryKey(),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automations.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    connectionRef: text("connection_ref").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    config: jsonb("config")
+      .$type<AutomationConnectionConfig["config"]>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("automation_connections_automation_id_idx").on(table.automationId),
+  ],
+);
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -131,6 +267,14 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    automationId: text("automation_id").references(() => automations.id, {
+      onDelete: "set null",
+    }),
+    runSource: text("run_source", {
+      enum: ["manual", "automation"],
+    })
+      .notNull()
+      .default("manual"),
     status: text("status", {
       enum: ["running", "completed", "failed", "archived"],
     })
@@ -196,7 +340,10 @@ export const sessions = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("sessions_user_id_idx").on(table.userId)],
+  (table) => [
+    index("sessions_user_id_idx").on(table.userId),
+    index("sessions_automation_id_idx").on(table.automationId),
+  ],
 );
 
 export const chats = pgTable(
@@ -261,6 +408,59 @@ export const chatReads = pgTable(
   ],
 );
 
+export const automationRuns = pgTable(
+  "automation_runs",
+  {
+    id: text("id").primaryKey(),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id").references(() => sessions.id, {
+      onDelete: "set null",
+    }),
+    chatId: text("chat_id").references(() => chats.id, {
+      onDelete: "set null",
+    }),
+    workflowRunId: text("workflow_run_id"),
+    trigger: text("trigger", {
+      enum: ["cron", "manual"],
+    })
+      .notNull()
+      .$type<AutomationRunTrigger>(),
+    status: text("status", {
+      enum: [
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "needs_attention",
+        "cancelled",
+      ],
+    })
+      .notNull()
+      .$type<AutomationRunStatus>(),
+    triggeredAt: timestamp("triggered_at").notNull(),
+    startedAt: timestamp("started_at"),
+    finishedAt: timestamp("finished_at"),
+    resultSummary: text("result_summary"),
+    prNumber: integer("pr_number"),
+    prUrl: text("pr_url"),
+    compareUrl: text("compare_url"),
+    error: text("error"),
+    needsAttentionReason: text("needs_attention_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("automation_runs_automation_id_idx").on(table.automationId),
+    index("automation_runs_user_id_idx").on(table.userId),
+    index("automation_runs_session_id_idx").on(table.sessionId),
+  ],
+);
+
 export const workflowRuns = pgTable(
   "workflow_runs",
   {
@@ -318,6 +518,14 @@ export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 export type VercelProjectLink = typeof vercelProjectLinks.$inferSelect;
 export type NewVercelProjectLink = typeof vercelProjectLinks.$inferInsert;
+export type Automation = typeof automations.$inferSelect;
+export type NewAutomation = typeof automations.$inferInsert;
+export type AutomationTrigger = typeof automationTriggers.$inferSelect;
+export type NewAutomationTrigger = typeof automationTriggers.$inferInsert;
+export type AutomationTool = typeof automationTools.$inferSelect;
+export type NewAutomationTool = typeof automationTools.$inferInsert;
+export type AutomationConnection = typeof automationConnections.$inferSelect;
+export type NewAutomationConnection = typeof automationConnections.$inferInsert;
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;
 export type Share = typeof shares.$inferSelect;
@@ -326,6 +534,8 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewChatMessage = typeof chatMessages.$inferInsert;
 export type ChatRead = typeof chatReads.$inferSelect;
 export type NewChatRead = typeof chatReads.$inferInsert;
+export type AutomationRun = typeof automationRuns.$inferSelect;
+export type NewAutomationRun = typeof automationRuns.$inferInsert;
 export type WorkflowRun = typeof workflowRuns.$inferSelect;
 export type NewWorkflowRun = typeof workflowRuns.$inferInsert;
 export type WorkflowRunStep = typeof workflowRunSteps.$inferSelect;

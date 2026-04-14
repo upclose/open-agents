@@ -423,6 +423,7 @@ export async function runAutoCreatePrStep(params: {
   repoOwner: string;
   repoName: string;
   sandboxState: SandboxState;
+  isDraft?: boolean;
 }): Promise<AutoCreatePrResult> {
   "use step";
   try {
@@ -436,6 +437,7 @@ export async function runAutoCreatePrStep(params: {
       sessionTitle: params.sessionTitle,
       repoOwner: params.repoOwner,
       repoName: params.repoName,
+      isDraft: params.isDraft,
     });
 
     if (result.error) {

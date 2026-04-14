@@ -11,7 +11,7 @@ import {
 import type { SkillMetadata } from "./skills/types";
 import { buildSystemPrompt } from "./system-prompt";
 import {
-  askUserQuestionTool,
+  createAskUserQuestionTool,
   bashTool,
   editFileTool,
   globTool,
@@ -44,6 +44,12 @@ const callOptionsSchema = z.object({
   subagentModel: z.custom<OpenHarnessAgentModelInput>().optional(),
   customInstructions: z.string().optional(),
   skills: z.custom<SkillMetadata[]>().optional(),
+  automation: z
+    .object({
+      unattended: z.boolean().default(false),
+      enabledToolTypes: z.array(z.string()).default([]),
+    })
+    .optional(),
 });
 
 export type OpenHarnessAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -62,7 +68,7 @@ function normalizeAgentModelSelection(
   return typeof selection === "string" ? { id: selection } : selection;
 }
 
-const tools = {
+const baseTools = {
   todo_write: todoWriteTool,
   read: readFileTool(),
   write: writeFileTool(),
@@ -71,15 +77,26 @@ const tools = {
   glob: globTool(),
   bash: bashTool(),
   task: taskTool,
-  ask_user_question: askUserQuestionTool,
   skill: skillTool,
   web_fetch: webFetchTool,
 } satisfies ToolSet;
 
+function buildTools(options?: { unattended?: boolean; baseTools?: ToolSet }) {
+  return {
+    ...baseTools,
+    ...options?.baseTools,
+    ask_user_question: createAskUserQuestionTool({
+      unattended: options?.unattended,
+    }),
+  } satisfies ToolSet;
+}
+
+const defaultTools = buildTools();
+
 export const openHarnessAgent = new ToolLoopAgent({
   model: defaultModel,
   instructions: buildSystemPrompt({}),
-  tools,
+  tools: defaultTools,
   stopWhen: stepCountIs(1),
   callOptionsSchema,
   prepareStep: ({ messages, model, steps: _steps }) => {
@@ -114,6 +131,11 @@ export const openHarnessAgent = new ToolLoopAgent({
     const customInstructions = options.customInstructions;
     const sandbox = options.sandbox;
     const skills = options.skills ?? [];
+    const automation = options.automation;
+    const tools = buildTools({
+      unattended: automation?.unattended,
+      baseTools: settings.tools as ToolSet | undefined,
+    });
 
     const instructions = buildSystemPrompt({
       cwd: sandbox.workingDirectory,
@@ -127,16 +149,14 @@ export const openHarnessAgent = new ToolLoopAgent({
     return {
       ...settings,
       model: callModel,
-      tools: addCacheControl({
-        tools: settings.tools ?? tools,
-        model: callModel,
-      }),
+      tools: addCacheControl({ tools, model: callModel }),
       instructions,
       experimental_context: {
         sandbox,
         skills,
         model: callModel,
         subagentModel,
+        automation,
       },
     };
   },

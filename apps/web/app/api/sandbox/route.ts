@@ -1,6 +1,6 @@
 import { checkBotId } from "botid/server";
 import { botIdConfig } from "@/lib/botid";
-import { connectSandbox, type SandboxState } from "@open-harness/sandbox";
+import { connectSandbox } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSession,
@@ -11,24 +11,13 @@ import { updateSession } from "@/lib/db/sessions";
 import { parseGitHubUrl } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import {
-  DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SANDBOX_TIMEOUT_MS,
 } from "@/lib/sandbox/config";
-import {
-  buildActiveLifecycleUpdate,
-  getNextLifecycleVersion,
-} from "@/lib/sandbox/lifecycle";
-import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
-import {
-  getVercelCliSandboxSetup,
-  syncVercelCliAuthToSandbox,
-} from "@/lib/sandbox/vercel-cli-auth";
-import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
+import { ensureSessionSandbox } from "@/lib/sandbox/ensure-session-sandbox";
 import {
   canOperateOnSandbox,
   clearSandboxState,
-  getSessionSandboxName,
   hasResumableSandboxState,
 } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -72,37 +61,6 @@ interface CreateSandboxRequest {
 //     "utf-8",
 //   );
 // }
-
-async function syncVercelCliAuthForSandbox(params: {
-  userId: string;
-  sessionRecord: SessionRecord;
-  sandbox: Awaited<ReturnType<typeof connectSandbox>>;
-}): Promise<void> {
-  const setup = await getVercelCliSandboxSetup({
-    userId: params.userId,
-    sessionRecord: params.sessionRecord,
-  });
-
-  await syncVercelCliAuthToSandbox({
-    sandbox: params.sandbox,
-    setup,
-  });
-}
-
-async function installSessionGlobalSkills(params: {
-  sessionRecord: SessionRecord;
-  sandbox: Awaited<ReturnType<typeof connectSandbox>>;
-}): Promise<void> {
-  const globalSkillRefs = params.sessionRecord.globalSkillRefs ?? [];
-  if (globalSkillRefs.length === 0) {
-    return;
-  }
-
-  await installGlobalSkills({
-    sandbox: params.sandbox,
-    globalSkillRefs,
-  });
-}
 
 export async function POST(req: Request) {
   let body: CreateSandboxRequest;
@@ -162,7 +120,6 @@ export async function POST(req: Request) {
     sessionRecord = sessionContext.sessionRecord;
   }
 
-  const sandboxName = sessionId ? getSessionSandboxName(sessionId) : undefined;
   const githubAccount = await getGitHubAccount(session.user.id);
   const githubNoreplyEmail =
     githubAccount?.externalUserId && githubAccount.username
@@ -180,94 +137,42 @@ export async function POST(req: Request) {
   // ============================================
   // CREATE OR RESUME: Create a named persistent sandbox for this session.
   // ============================================
-  const startTime = Date.now();
+  let readyMs = 0;
 
-  const source = repoUrl
-    ? {
-        repo: repoUrl,
-        branch: isNewBranch ? undefined : branch,
-        newBranch: isNewBranch ? branch : undefined,
-      }
-    : undefined;
-
-  const sandbox = await connectSandbox({
-    state: {
-      type: "vercel",
-      ...(sandboxName ? { sandboxName } : {}),
-      source,
-    },
-    options: {
-      githubToken: githubToken ?? undefined,
-      gitUser,
-      timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-      ports: DEFAULT_SANDBOX_PORTS,
-      baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-      persistent: !!sandboxName,
-      resume: !!sandboxName,
-      createIfMissing: !!sandboxName,
-    },
-  });
-
-  if (sessionId && sandbox.getState) {
-    const nextState = sandbox.getState() as SandboxState;
-    await updateSession(sessionId, {
-      sandboxState: nextState,
-      snapshotUrl: null,
-      snapshotCreatedAt: null,
-      lifecycleVersion: getNextLifecycleVersion(
-        sessionRecord?.lifecycleVersion,
-      ),
-      ...buildActiveLifecycleUpdate(nextState),
+  if (sessionId && sessionRecord) {
+    const ensured = await ensureSessionSandbox({
+      userId: session.user.id,
+      sessionRecord,
+      repoUrl: repoUrl ?? sessionRecord.cloneUrl ?? undefined,
+      sourceBranch: repoUrl ? (isNewBranch ? undefined : branch) : undefined,
+      newBranch: repoUrl && isNewBranch ? branch : undefined,
     });
 
-    if (sessionRecord) {
-      // TODO: Re-enable this once we have a solid exfiltration defense strategy.
-      // try {
-      //   await syncVercelProjectEnvVarsToSandbox({
-      //     userId: session.user.id,
-      //     sessionRecord,
-      //     sandbox,
-      //   });
-      // } catch (error) {
-      //   console.error(
-      //     `Failed to sync Vercel env vars for session ${sessionRecord.id}:`,
-      //     error,
-      //   );
-      // }
-
-      try {
-        await syncVercelCliAuthForSandbox({
-          userId: session.user.id,
-          sessionRecord,
-          sandbox,
-        });
-      } catch (error) {
-        console.error(
-          `Failed to prepare Vercel CLI auth for session ${sessionRecord.id}:`,
-          error,
-        );
-      }
-
-      try {
-        await installSessionGlobalSkills({
-          sessionRecord,
-          sandbox,
-        });
-      } catch (error) {
-        console.error(
-          `Failed to install global skills for session ${sessionRecord.id}:`,
-          error,
-        );
-      }
-    }
-
-    kickSandboxLifecycleWorkflow({
-      sessionId,
-      reason: "sandbox-created",
-    });
+    readyMs = ensured.readyMs;
+  } else {
+    const startTime = Date.now();
+    await import("@open-harness/sandbox").then(({ connectSandbox }) =>
+      connectSandbox({
+        state: {
+          type: "vercel",
+          source: repoUrl
+            ? {
+                repo: repoUrl,
+                branch: isNewBranch ? undefined : branch,
+                newBranch: isNewBranch ? branch : undefined,
+              }
+            : undefined,
+        },
+        options: {
+          githubToken: githubToken ?? undefined,
+          gitUser,
+          timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+          ports: DEFAULT_SANDBOX_PORTS,
+        },
+      }),
+    );
+    readyMs = Date.now() - startTime;
   }
-
-  const readyMs = Date.now() - startTime;
 
   return Response.json({
     createdAt: Date.now(),

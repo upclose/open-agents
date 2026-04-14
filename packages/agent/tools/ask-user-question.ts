@@ -29,12 +29,17 @@ const askUserQuestionOutputSchema = z
     z.object({
       declined: z.literal(true),
     }),
+  )
+  .or(
+    z.object({
+      automationNeedsAttention: z.literal(true),
+      questions: z.array(questionSchema).min(1).max(4),
+    }),
   );
 
 export type AskUserQuestionOutput = z.infer<typeof askUserQuestionOutputSchema>;
 
-export const askUserQuestionTool = tool({
-  description: `Ask the user questions during execution to gather preferences, clarify requirements, or get decisions.
+const askUserQuestionDescription = `Ask the user questions during execution to gather preferences, clarify requirements, or get decisions.
 
 WHEN TO USE:
 - Gather user preferences or requirements
@@ -46,40 +51,86 @@ USAGE NOTES:
 - Users can always select "Other" to provide custom text input
 - Use multiSelect: true to allow multiple answers
 - If you recommend a specific option, make it the first option and add "(Recommended)"
-- Questions appear as tabs; users navigate between them before submitting`,
-  inputSchema: askUserQuestionInputSchema,
-  outputSchema: askUserQuestionOutputSchema,
-  // NO execute function - this is a client-side tool
-  toModelOutput: ({ output }) => {
-    if (!output) {
-      return { type: "text", value: "User did not respond to questions." };
-    }
+- Questions appear as tabs; users navigate between them before submitting`;
 
-    if ("declined" in output && output.declined) {
-      return {
-        type: "text",
-        value:
-          "User declined to answer questions. You should continue without this information or ask in a different way.",
-      };
-    }
+function toAskUserQuestionModelOutput(output: unknown) {
+  if (!output) {
+    return { type: "text" as const, value: "User did not respond to questions." };
+  }
 
-    if ("answers" in output) {
-      const formattedAnswers = Object.entries(output.answers)
-        .map(([question, answer]) => {
-          const answerStr = Array.isArray(answer) ? answer.join(", ") : answer;
-          return `"${question}"="${answerStr}"`;
-        })
-        .join(", ");
+  if (
+    typeof output === "object" &&
+    output !== null &&
+    "declined" in output &&
+    output.declined
+  ) {
+    return {
+      type: "text" as const,
+      value:
+        "User declined to answer questions. You should continue without this information or ask in a different way.",
+    };
+  }
 
-      return {
-        type: "text",
-        value: `User has answered your questions: ${formattedAnswers}. You can now continue with the user's answers in mind.`,
-      };
-    }
+  if (
+    typeof output === "object" &&
+    output !== null &&
+    "automationNeedsAttention" in output &&
+    output.automationNeedsAttention
+  ) {
+    return {
+      type: "text" as const,
+      value:
+        "This automation run cannot ask the user questions. Summarize exactly what needs attention and stop after you explain it.",
+    };
+  }
 
-    return { type: "text", value: "User responded to questions." };
-  },
-});
+  if (
+    typeof output === "object" &&
+    output !== null &&
+    "answers" in output &&
+    typeof output.answers === "object" &&
+    output.answers !== null
+  ) {
+    const formattedAnswers = Object.entries(
+      output.answers as Record<string, string | string[]>,
+    )
+      .map(([question, answer]) => {
+        const answerStr = Array.isArray(answer) ? answer.join(", ") : answer;
+        return `"${question}"="${answerStr}"`;
+      })
+      .join(", ");
+
+    return {
+      type: "text" as const,
+      value: `User has answered your questions: ${formattedAnswers}. You can now continue with the user's answers in mind.`,
+    };
+  }
+
+  return { type: "text" as const, value: "User responded to questions." };
+}
+
+export function createAskUserQuestionTool(options?: { unattended?: boolean }) {
+  if (options?.unattended) {
+    return tool({
+      description: askUserQuestionDescription,
+      inputSchema: askUserQuestionInputSchema,
+      outputSchema: askUserQuestionOutputSchema,
+      execute: async ({ questions }: AskUserQuestionInput) => ({
+        automationNeedsAttention: true as const,
+        questions,
+      }),
+      toModelOutput: ({ output }) => toAskUserQuestionModelOutput(output),
+    });
+  }
+
+  return tool({
+    description: askUserQuestionDescription,
+    inputSchema: askUserQuestionInputSchema,
+    toModelOutput: ({ output }) => toAskUserQuestionModelOutput(output),
+  });
+}
+
+export const askUserQuestionTool = createAskUserQuestionTool();
 
 export type AskUserQuestionToolUIPart = UIToolInvocation<
   typeof askUserQuestionTool

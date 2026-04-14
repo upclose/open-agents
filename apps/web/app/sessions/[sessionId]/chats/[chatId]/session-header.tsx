@@ -9,6 +9,7 @@ import {
   Link2,
   PanelLeft,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -175,6 +176,34 @@ export function SessionHeader() {
             <span className="truncate font-medium text-foreground sm:font-normal sm:text-muted-foreground">
               {session.title}
             </span>
+            {session.runSource === "automation" && session.automationId ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    href={`/automations/${session.automationId}`}
+                    className="ml-1 inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Automation
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Open parent automation
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+            {session.automationRunStatus === "needs_attention" ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-1 inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600">
+                    Needs attention
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-72">
+                  {session.automationNeedsAttentionReason ??
+                    "This automation run needs manual attention."}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
 
             {/* Share link icon */}
             <Tooltip>
