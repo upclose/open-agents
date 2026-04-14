@@ -78,6 +78,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 ## Chat / Streaming UI
 
 - In large chat/page client components, extract new feature-specific UI flows into colocated hooks and child components instead of adding more state/effects/handlers inline; if the feature state must survive dropdown/popover/dialog toggles, mount the hook in the parent view and pass its controls down.
+- Cancelling an automation-backed chat from `/api/chat/[chatId]/stop` must also finalize the linked `automation_runs` row immediately; relying only on workflow teardown can leave automation history stuck at `running` after a user-initiated stop.
 - In the web chat UI, do not keep `@ai-sdk/react` Chat instances alive after route transitions while they are still streaming; abort local stream processing and remove the instance on teardown, then rely on resumable stream reconnect when revisiting that chat.
 - For client-side tool flows (`ask_user_question`), `onFinish`-only assistant persistence is insufficient across route switches: persist the latest incoming message snapshot at API request start (upsert by message id) so answered/declined tool state survives teardown/resume and does not rehydrate stale `input-available` UI.
 - Request-start assistant snapshot persistence must be scoped and ownership-guarded: only upsert assistant messages when the request still owns the chat stream token, and refuse upserts on message-id scope conflict (different chat/role) to prevent stale writes and cross-chat overwrites.
@@ -108,6 +109,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - Public upstream repositories may reject direct branch pushes; PR generation should fall back to creating/pushing to the user's fork and PR creation must use a qualified head ref (`forkOwner:branch`).
 - GitHub fork creation can take longer than a few seconds to become pushable; PR fallback should retry fork push on transient `repository not found` errors instead of failing immediately.
 - Git push failures from Vercel sandboxes can return empty output even when auth/write is denied; PR fallback logic should not rely only on matching "permission" text before attempting fork fallback.
+- Automation auto-PR flows cannot assume the run already published the branch to `origin`; verify or push the branch only after confirming there is a real diff to publish, so empty runs skip cleanly instead of creating blank remote branches.
 - GitHub App user/integration tokens may return `403 Resource not accessible by integration` for fork creation; PR fallback should surface a manual-fork guidance path instead of assuming automatic fork creation is always allowed.
 - For PR/push flows, installation tokens can fail on repos outside selected installation scope even when the user's GitHub token has write access; retry origin push/PR creation with user token before forcing fork fallback.
 - Even when branch push succeeds, GitHub PR creation can still return `403 Resource not accessible by integration`; expose a compare URL fallback so users can complete PR creation manually in the browser.

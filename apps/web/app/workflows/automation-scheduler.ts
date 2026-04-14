@@ -35,9 +35,8 @@ async function clearOwnedSchedulerRunId(
   schedulerState: "idle" | "paused" | "scheduled" = "idle",
 ) {
   "use step";
-  const { clearAutomationSchedulerRunIdIfOwned } = await import(
-    "@/lib/db/automations"
-  );
+  const { clearAutomationSchedulerRunIdIfOwned } =
+    await import("@/lib/db/automations");
   await clearAutomationSchedulerRunIdIfOwned({
     automationId,
     runId,

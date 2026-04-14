@@ -8,9 +8,10 @@ type ExecResult = {
   success: boolean;
   stdout: string;
   stderr?: string;
+  exitCode?: number;
 };
 
-let execResults: Map<string, ExecResult>;
+let execResults: Map<string, ExecResult | ExecResult[]>;
 let userTokenResult: string | null = "ghp_user";
 let cachedBranchesResult: { branches: string[]; defaultBranch: string } | null =
   {
@@ -57,6 +58,17 @@ let prContentResult:
 const execSpy = mock(async (command: string): Promise<ExecResult> => {
   for (const [prefix, result] of execResults) {
     if (command.startsWith(prefix) || command.includes(prefix)) {
+      if (Array.isArray(result)) {
+        const nextResult = result.shift();
+        return (
+          nextResult ?? {
+            success: true,
+            stdout: "",
+            stderr: "",
+          }
+        );
+      }
+
       return result;
     }
   }
@@ -80,6 +92,9 @@ const sandbox = {
 
 mock.module("@/app/api/generate-pr/_lib/generate-pr-helpers", () => ({
   looksLikeCommitHash: (value: string) => /^[0-9a-f]{7,40}$/i.test(value),
+  isPermissionPushError: (value: string) =>
+    value.toLowerCase().includes("permission denied"),
+  redactGitHubToken: (value: string) => value,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
@@ -106,8 +121,8 @@ mock.module("@/lib/git/pr-content", () => ({
 
 const { performAutoCreatePr } = await import("./auto-pr-direct");
 
-function defaultExecResults(): Map<string, ExecResult> {
-  return new Map<string, ExecResult>([
+function defaultExecResults(): Map<string, ExecResult | ExecResult[]> {
+  return new Map<string, ExecResult | ExecResult[]>([
     [
       "git symbolic-ref --short HEAD",
       { success: true, stdout: "feature-branch" },
@@ -226,11 +241,43 @@ describe("performAutoCreatePr", () => {
     expect(setUrlCall).toBeUndefined();
   });
 
-  test("skips when the current branch is not available on origin", async () => {
+  test("publishes the branch when it is not yet available on origin", async () => {
+    execResults.set("git ls-remote --heads origin", [
+      {
+        success: true,
+        stdout: "",
+      },
+      {
+        success: true,
+        stdout: "abc123\trefs/heads/feature-branch",
+      },
+    ]);
+
+    const result = await performAutoCreatePr(makeParams());
+
+    expect(result).toEqual({
+      created: true,
+      syncedExisting: false,
+      skipped: false,
+      prNumber: 42,
+      prUrl: "https://github.com/acme/repo/pull/42",
+    } satisfies AutoCreatePrResult);
+    expect(execSpy).toHaveBeenCalledWith(
+      "GIT_TERMINAL_PROMPT=0 git push --verbose -u origin feature-branch",
+      "/vercel/sandbox",
+      60000,
+    );
+  });
+
+  test("skips without publishing an empty branch when there is no PR diff", async () => {
     execResults.set("git ls-remote --heads origin", {
       success: true,
       stdout: "",
     });
+    prContentResult = {
+      success: false,
+      error: "No changes detected between origin/main and feature-branch",
+    };
 
     const result = await performAutoCreatePr(makeParams());
 
@@ -238,15 +285,53 @@ describe("performAutoCreatePr", () => {
       created: false,
       syncedExisting: false,
       skipped: true,
-      skipReason: "Current branch is not available on origin",
+      skipReason: "No changes detected between origin/main and feature-branch",
     } satisfies AutoCreatePrResult);
-    expect(generatePullRequestContentFromSandboxSpy).not.toHaveBeenCalled();
+    expect(execSpy).not.toHaveBeenCalledWith(
+      "GIT_TERMINAL_PROMPT=0 git push --verbose -u origin feature-branch",
+      "/vercel/sandbox",
+      60000,
+    );
+    expect(createPullRequestSpy).not.toHaveBeenCalled();
   });
 
-  test("skips when the current branch is not fully pushed to origin", async () => {
+  test("publishes the branch when origin is behind local HEAD", async () => {
+    execResults.set("git ls-remote --heads origin", [
+      {
+        success: true,
+        stdout: "def456\trefs/heads/feature-branch",
+      },
+      {
+        success: true,
+        stdout: "abc123\trefs/heads/feature-branch",
+      },
+    ]);
+
+    const result = await performAutoCreatePr(makeParams());
+
+    expect(result).toEqual({
+      created: true,
+      syncedExisting: false,
+      skipped: false,
+      prNumber: 42,
+      prUrl: "https://github.com/acme/repo/pull/42",
+    } satisfies AutoCreatePrResult);
+    expect(execSpy).toHaveBeenCalledWith(
+      "GIT_TERMINAL_PROMPT=0 git push --verbose -u origin feature-branch",
+      "/vercel/sandbox",
+      60000,
+    );
+  });
+
+  test("returns an error when publishing the current branch fails", async () => {
     execResults.set("git ls-remote --heads origin", {
       success: true,
-      stdout: "def456\trefs/heads/feature-branch",
+      stdout: "",
+    });
+    execResults.set("git push", {
+      success: false,
+      stdout: "",
+      stderr: "permission denied",
     });
 
     const result = await performAutoCreatePr(makeParams());
@@ -254,10 +339,9 @@ describe("performAutoCreatePr", () => {
     expect(result).toEqual({
       created: false,
       syncedExisting: false,
-      skipped: true,
-      skipReason: "Current branch is not fully pushed to origin",
+      skipped: false,
+      error: "Permission denied while pushing current branch to origin",
     } satisfies AutoCreatePrResult);
-    expect(findPullRequestByBranchSpy).not.toHaveBeenCalled();
     expect(createPullRequestSpy).not.toHaveBeenCalled();
   });
 

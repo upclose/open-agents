@@ -59,6 +59,23 @@ function formatRunTime(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Not available";
 }
 
+function getRunStatusBorderColor(status: string) {
+  switch (status) {
+    case "completed":
+      return "border-l-emerald-500";
+    case "running":
+    case "queued":
+      return "border-l-blue-500";
+    case "needs_attention":
+      return "border-l-amber-500";
+    case "failed":
+    case "cancelled":
+      return "border-l-red-500";
+    default:
+      return "border-l-border";
+  }
+}
+
 function getRunStatusDotColor(status: string) {
   switch (status) {
     case "completed":
@@ -279,51 +296,91 @@ export function AutomationDetailPage({
         </div>
       </div>
 
-      {/* ── Summary ── */}
-      <div className="divide-y divide-border/60 rounded-lg border border-border/70 text-sm">
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-muted-foreground">Schedule</span>
-          <span>{automation.scheduleSummary}</span>
+      {/* ── Schedule ── */}
+      <div className="space-y-4">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Schedule
+        </h2>
+        <div className="space-y-4">
+          <div className="grid gap-1">
+            <p className="text-xs font-medium text-muted-foreground">
+              Frequency
+            </p>
+            <p className="text-sm">{automation.scheduleSummary}</p>
+          </div>
+          <div className="grid gap-1">
+            <p className="text-xs font-medium text-muted-foreground">
+              Next run
+            </p>
+            <p className="text-sm">{nextPreview}</p>
+          </div>
+          {cronConfig ? (
+            <div className="grid gap-1">
+              <p className="text-xs font-medium text-muted-foreground">
+                Timezone
+              </p>
+              <p className="text-sm">{cronConfig.timezone}</p>
+            </div>
+          ) : null}
         </div>
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-muted-foreground">Next run</span>
-          <span>{nextPreview}</span>
-        </div>
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-muted-foreground">Last run</span>
-          <span>
-            {automation.lastRunAt
-              ? formatRunTime(automation.lastRunAt)
-              : "No runs yet"}
-          </span>
-        </div>
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-muted-foreground">Last result</span>
-          <span>
-            {automation.lastRunSummary ??
-              automation.lastRunStatus ??
-              "Waiting for first run"}
-          </span>
-        </div>
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-muted-foreground">Tools</span>
-          <span>
-            {automation.enabledToolTypes.length > 0 ? (
-              <span className="flex flex-wrap justify-end gap-1">
-                {automation.enabledToolTypes.map((toolType) => (
-                  <span
-                    key={toolType}
-                    className="inline-flex items-center rounded-full border border-border px-1.5 py-0 text-[10px] uppercase tracking-wide text-muted-foreground"
-                  >
-                    {toolType.replaceAll("_", " ")}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              "None"
+      </div>
+
+      {/* ── Latest Run ── */}
+      <div className="space-y-4 border-t border-border/50 pt-8">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Latest Run
+        </h2>
+        {automation.lastRunStatus ? (
+          <div
+            className={cn(
+              "rounded-md border-l-2 bg-muted/20 px-4 py-3",
+              getRunStatusBorderColor(automation.lastRunStatus),
             )}
-          </span>
-        </div>
+          >
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-xs font-medium uppercase tracking-wide">
+                {automation.lastRunStatus.replaceAll("_", " ")}
+              </span>
+              {automation.lastRunAt ? (
+                <span className="text-xs text-muted-foreground">
+                  {formatRunTime(automation.lastRunAt)}
+                </span>
+              ) : null}
+            </div>
+            {automation.lastRunSummary ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {automation.lastRunSummary}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No runs yet. Use Run now or wait for the next scheduled execution.
+          </p>
+        )}
+      </div>
+
+      {/* ── Tools ── */}
+      <div className="space-y-4 border-t border-border/50 pt-8">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Tools
+        </h2>
+        {automation.enabledToolTypes.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {automation.enabledToolTypes.map((toolType) => (
+              <span
+                key={toolType}
+                className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+              >
+                {toolType.replaceAll("_", " ")}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No external tools enabled
+          </p>
+        )}
       </div>
 
       {/* ── Edit ── */}

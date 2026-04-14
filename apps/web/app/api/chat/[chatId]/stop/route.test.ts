@@ -17,12 +17,28 @@ let chatRecord: {
 let sessionRecord: {
   id: string;
   userId: string;
+  automationId?: string | null;
+  runSource?: string | null;
 } | null = {
   id: "session-1",
   userId: "user-1",
+  automationId: null,
+  runSource: null,
 };
 
 let cancelShouldThrow = false;
+let automationRunRecord: {
+  id: string;
+  automationId: string;
+  chatId: string | null;
+  workflowRunId: string | null;
+  status: string;
+  resultSummary: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  compareUrl: string | null;
+} | null = null;
+let finalizeAutomationRunShouldThrow = false;
 
 const spies = {
   cancel: mock(() => {
@@ -34,6 +50,15 @@ const spies = {
     () => Promise.resolve({ id: "msg-1" }) as Promise<unknown>,
   ),
   updateChatAssistantActivity: mock(() => Promise.resolve()),
+  getLatestAutomationRunBySessionId: mock(() =>
+    Promise.resolve(automationRunRecord),
+  ),
+  finalizeAutomationRun: mock(() => {
+    if (finalizeAutomationRunShouldThrow) {
+      throw new Error("Finalize failed");
+    }
+    return Promise.resolve();
+  }),
 };
 
 // ── Module mocks ───────────────────────────────────────────────────
@@ -63,6 +88,11 @@ mock.module("@/lib/db/sessions", () => ({
   updateChatAssistantActivity: spies.updateChatAssistantActivity,
 }));
 
+mock.module("@/lib/db/automations", () => ({
+  getLatestAutomationRunBySessionId: spies.getLatestAutomationRunBySessionId,
+  finalizeAutomationRun: spies.finalizeAutomationRun,
+}));
+
 const routeModulePromise = import("./route");
 
 afterAll(() => {
@@ -90,12 +120,19 @@ const routeContext = {
 
 beforeEach(() => {
   currentAuthSession = { user: { id: "user-1" } };
-  sessionRecord = { id: "session-1", userId: "user-1" };
+  sessionRecord = {
+    id: "session-1",
+    userId: "user-1",
+    automationId: null,
+    runSource: null,
+  };
   chatRecord = {
     sessionId: "session-1",
     activeStreamId: "wrun_active-123",
   };
   cancelShouldThrow = false;
+  automationRunRecord = null;
+  finalizeAutomationRunShouldThrow = false;
   Object.values(spies).forEach((s) => s.mockClear());
 });
 
@@ -154,6 +191,100 @@ describe("POST /api/chat/[chatId]/stop", () => {
       "wrun_active-123",
       null,
     );
+  });
+
+  test("marks an active automation run as cancelled after stop", async () => {
+    sessionRecord = {
+      id: "session-1",
+      userId: "user-1",
+      automationId: "automation-1",
+      runSource: "automation",
+    };
+    automationRunRecord = {
+      id: "run-1",
+      automationId: "automation-1",
+      chatId: "chat-1",
+      workflowRunId: "wrun_active-123",
+      status: "running",
+      resultSummary: null,
+      prNumber: null,
+      prUrl: null,
+      compareUrl: null,
+    };
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createStopRequest(), routeContext);
+    expect(response.status).toBe(200);
+    expect(spies.getLatestAutomationRunBySessionId).toHaveBeenCalledWith(
+      "session-1",
+    );
+    expect(spies.finalizeAutomationRun).toHaveBeenCalledWith({
+      runId: "run-1",
+      automationId: "automation-1",
+      status: "cancelled",
+      resultSummary: "Cancelled",
+      workflowRunId: "wrun_active-123",
+      prNumber: null,
+      prUrl: null,
+      compareUrl: null,
+      error: null,
+      needsAttentionReason: null,
+    });
+  });
+
+  test("does not re-finalize an automation run that is already terminal", async () => {
+    sessionRecord = {
+      id: "session-1",
+      userId: "user-1",
+      automationId: "automation-1",
+      runSource: "automation",
+    };
+    automationRunRecord = {
+      id: "run-1",
+      automationId: "automation-1",
+      chatId: "chat-1",
+      workflowRunId: "wrun_active-123",
+      status: "completed",
+      resultSummary: "done",
+      prNumber: null,
+      prUrl: null,
+      compareUrl: null,
+    };
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createStopRequest(), routeContext);
+    expect(response.status).toBe(200);
+    expect(spies.finalizeAutomationRun).not.toHaveBeenCalled();
+  });
+
+  test("still returns success when automation run finalization fails", async () => {
+    sessionRecord = {
+      id: "session-1",
+      userId: "user-1",
+      automationId: "automation-1",
+      runSource: "automation",
+    };
+    automationRunRecord = {
+      id: "run-1",
+      automationId: "automation-1",
+      chatId: "chat-1",
+      workflowRunId: "wrun_active-123",
+      status: "running",
+      resultSummary: null,
+      prNumber: null,
+      prUrl: null,
+      compareUrl: null,
+    };
+    finalizeAutomationRunShouldThrow = true;
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createStopRequest(), routeContext);
+    expect(response.status).toBe(200);
+    expect(spies.cancel).toHaveBeenCalledTimes(1);
+    expect(spies.finalizeAutomationRun).toHaveBeenCalledTimes(1);
   });
 
   test("returns 500 when workflow cancel fails", async () => {

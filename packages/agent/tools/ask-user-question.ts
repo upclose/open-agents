@@ -55,7 +55,10 @@ USAGE NOTES:
 
 function toAskUserQuestionModelOutput(output: unknown) {
   if (!output) {
-    return { type: "text" as const, value: "User did not respond to questions." };
+    return {
+      type: "text" as const,
+      value: "User did not respond to questions.",
+    };
   }
 
   if (

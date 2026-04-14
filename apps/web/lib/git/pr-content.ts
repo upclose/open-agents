@@ -265,7 +265,7 @@ export async function generatePullRequestContentFromSandbox(
     ) {
       return {
         success: false,
-        error: `No changes found: branch '${branchName}' is at the same commit as '${baseBranch}'. Make some changes first.`,
+        error: `No changes found: branch '${branchName}' is at the same commit as '${baseBranch}'.`,
       };
     }
 

@@ -1,5 +1,9 @@
 import type { Sandbox } from "@open-harness/sandbox";
-import { looksLikeCommitHash } from "@/app/api/generate-pr/_lib/generate-pr-helpers";
+import {
+  isPermissionPushError,
+  looksLikeCommitHash,
+  redactGitHubToken,
+} from "@/app/api/generate-pr/_lib/generate-pr-helpers";
 import { updateSession } from "@/lib/db/sessions";
 import {
   createPullRequest,
@@ -48,6 +52,73 @@ function isSkippablePrContentError(error: string): boolean {
     error.startsWith("No changes detected between") ||
     error.startsWith("There are uncommitted changes")
   );
+}
+
+function combineCommandOutput(result: {
+  stdout?: string;
+  stderr?: string;
+}): string {
+  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+}
+
+async function getRemoteBranchHead(params: {
+  sandbox: Sandbox;
+  cwd: string;
+  branchName: string;
+}): Promise<{ success: boolean; headSha: string | null; output: string }> {
+  const remoteBranchResult = await params.sandbox.exec(
+    `git ls-remote --heads origin ${params.branchName}`,
+    params.cwd,
+    10000,
+  );
+  const output = redactGitHubToken(combineCommandOutput(remoteBranchResult));
+
+  if (!remoteBranchResult.success) {
+    return {
+      success: false,
+      headSha: null,
+      output,
+    };
+  }
+
+  const firstLine = remoteBranchResult.stdout.trim().split("\n")[0]?.trim();
+  const headSha = firstLine ? (firstLine.split(/\s+/)[0] ?? null) : null;
+
+  return {
+    success: true,
+    headSha,
+    output,
+  };
+}
+
+function buildOriginPushError(params: {
+  branchName: string;
+  remoteHeadSha: string | null;
+  pushResult: { stdout?: string; stderr?: string; exitCode?: number | null };
+}): string {
+  const pushOutput = redactGitHubToken(combineCommandOutput(params.pushResult));
+  let isPermissionError = isPermissionPushError(pushOutput);
+
+  if (!isPermissionError && !pushOutput && params.pushResult.exitCode === 128) {
+    isPermissionError = true;
+  }
+
+  if (
+    pushOutput.includes("rejected") ||
+    pushOutput.includes("non-fast-forward")
+  ) {
+    return params.remoteHeadSha
+      ? `Branch '${params.branchName}' already exists on origin with different commits`
+      : `Push to origin was rejected for branch '${params.branchName}'`;
+  }
+
+  if (isPermissionError) {
+    return "Permission denied while pushing current branch to origin";
+  }
+
+  return pushOutput
+    ? `Failed to push current branch to origin: ${pushOutput.slice(0, 200)}`
+    : "Failed to push current branch to origin";
 }
 
 async function resolveDefaultBranch(params: {
@@ -206,74 +277,68 @@ export async function performAutoCreatePr(
     30000,
   );
 
-  const remoteBranchResult = await sandbox.exec(
-    `git ls-remote --heads origin ${branchName}`,
-    cwd,
-    10000,
-  );
-
-  if (!remoteBranchResult.success || !remoteBranchResult.stdout.trim()) {
-    return {
-      created: false,
-      syncedExisting: false,
-      skipped: true,
-      skipReason: "Current branch is not available on origin",
-    };
-  }
-
   const localHeadResult = await sandbox.exec("git rev-parse HEAD", cwd, 5000);
   const localHead = localHeadResult.success
     ? localHeadResult.stdout.trim()
     : "";
-  const remoteHead = remoteBranchResult.stdout.trim().split(/\s+/)[0] ?? "";
 
-  if (!localHead || !remoteHead) {
+  if (!localHead) {
     return {
       created: false,
       syncedExisting: false,
       skipped: false,
-      error: "Failed to resolve local or remote branch HEAD",
+      error: "Failed to resolve the current branch HEAD",
     };
   }
 
-  if (remoteHead !== localHead) {
-    return {
-      created: false,
-      syncedExisting: false,
-      skipped: true,
-      skipReason: "Current branch is not fully pushed to origin",
-    };
-  }
-
-  const existingPr = await findExistingOpenPullRequest({
-    repoOwner,
-    repoName,
+  let remoteBranchState = await getRemoteBranchHead({
+    sandbox,
+    cwd,
     branchName,
-    token: userToken,
   });
 
-  if (existingPr?.prNumber) {
-    await updateSession(sessionId, {
-      prNumber: existingPr.prNumber,
-      prStatus: "open",
-    }).catch((error) => {
-      console.error(
-        `[auto-pr] Failed to sync existing PR metadata for session ${sessionId}:`,
-        error,
-      );
-    });
-
-    console.log(
-      `[auto-pr] Reused existing PR #${existingPr.prNumber} for session ${sessionId}`,
-    );
-
+  if (!remoteBranchState.success) {
     return {
       created: false,
-      syncedExisting: true,
+      syncedExisting: false,
       skipped: false,
-      prNumber: existingPr.prNumber,
-      prUrl: existingPr.prUrl,
+      error: remoteBranchState.output
+        ? `Failed to inspect the current branch on origin: ${remoteBranchState.output.slice(0, 200)}`
+        : "Failed to inspect the current branch on origin",
     };
+  }
+
+  if (remoteBranchState.headSha === localHead) {
+    const existingPr = await findExistingOpenPullRequest({
+      repoOwner,
+      repoName,
+      branchName,
+      token: userToken,
+    });
+
+    if (existingPr?.prNumber) {
+      await updateSession(sessionId, {
+        prNumber: existingPr.prNumber,
+        prStatus: "open",
+      }).catch((error) => {
+        console.error(
+          `[auto-pr] Failed to sync existing PR metadata for session ${sessionId}:`,
+          error,
+        );
+      });
+
+      console.log(
+        `[auto-pr] Reused existing PR #${existingPr.prNumber} for session ${sessionId}`,
+      );
+
+      return {
+        created: false,
+        syncedExisting: true,
+        skipped: false,
+        prNumber: existingPr.prNumber,
+        prUrl: existingPr.prUrl,
+      };
+    }
   }
 
   const prContentResult = await generatePullRequestContentFromSandbox({
@@ -299,6 +364,90 @@ export async function performAutoCreatePr(
       syncedExisting: false,
       skipped: false,
       error: prContentResult.error,
+    };
+  }
+
+  if (remoteBranchState.headSha !== localHead) {
+    const pushResult = await sandbox.exec(
+      `GIT_TERMINAL_PROMPT=0 git push --verbose -u origin ${branchName}`,
+      cwd,
+      60000,
+    );
+
+    if (!pushResult.success) {
+      return {
+        created: false,
+        syncedExisting: false,
+        skipped: false,
+        error: buildOriginPushError({
+          branchName,
+          remoteHeadSha: remoteBranchState.headSha,
+          pushResult,
+        }),
+      };
+    }
+
+    remoteBranchState = await getRemoteBranchHead({
+      sandbox,
+      cwd,
+      branchName,
+    });
+
+    if (!remoteBranchState.success) {
+      return {
+        created: false,
+        syncedExisting: false,
+        skipped: false,
+        error: remoteBranchState.output
+          ? `Pushed the current branch but failed to verify it on origin: ${remoteBranchState.output.slice(0, 200)}`
+          : "Pushed the current branch but failed to verify it on origin",
+      };
+    }
+
+    if (!remoteBranchState.headSha) {
+      return {
+        created: false,
+        syncedExisting: false,
+        skipped: false,
+        error:
+          "Pushed the current branch but it is still not available on origin",
+      };
+    }
+
+    if (remoteBranchState.headSha !== localHead) {
+      return {
+        created: false,
+        syncedExisting: false,
+        skipped: false,
+        error: "Current branch push completed but origin is not at HEAD",
+      };
+    }
+  }
+
+  const existingPr = await findExistingOpenPullRequest({
+    repoOwner,
+    repoName,
+    branchName,
+    token: userToken,
+  });
+
+  if (existingPr?.prNumber) {
+    await updateSession(sessionId, {
+      prNumber: existingPr.prNumber,
+      prStatus: "open",
+    }).catch((error) => {
+      console.error(
+        `[auto-pr] Failed to sync raced PR metadata for session ${sessionId}:`,
+        error,
+      );
+    });
+
+    return {
+      created: false,
+      syncedExisting: true,
+      skipped: false,
+      prNumber: existingPr.prNumber,
+      prUrl: existingPr.prUrl,
     };
   }
 

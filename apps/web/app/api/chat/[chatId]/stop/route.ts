@@ -5,6 +5,10 @@ import {
 } from "@/app/api/chat/_lib/chat-context";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
+  finalizeAutomationRun,
+  getLatestAutomationRunBySessionId,
+} from "@/lib/db/automations";
+import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
   updateChatAssistantActivity,
@@ -30,7 +34,7 @@ export async function POST(request: Request, context: RouteContext) {
     return chatContext.response;
   }
 
-  const { chat } = chatContext;
+  const { chat, sessionRecord } = chatContext;
 
   if (!chat.activeStreamId) {
     return Response.json({ success: true });
@@ -75,6 +79,18 @@ export async function POST(request: Request, context: RouteContext) {
     );
   });
 
+  await markAutomationRunCancelledIfNeeded({
+    sessionId: sessionRecord.id,
+    automationId: sessionRecord.automationId,
+    runSource: sessionRecord.runSource,
+    chatId,
+  }).catch((error: unknown) => {
+    console.error(
+      `[workflow] Failed to finalize automation run after cancel for chat ${chatId}:`,
+      error,
+    );
+  });
+
   return Response.json({ success: true });
 }
 
@@ -116,4 +132,41 @@ function isStopRequestWithMessage(
     "parts" in msg &&
     Array.isArray(msg.parts)
   );
+}
+
+async function markAutomationRunCancelledIfNeeded(params: {
+  sessionId: string;
+  automationId: string | null;
+  runSource: string | null;
+  chatId: string;
+}) {
+  if (params.runSource !== "automation" || !params.automationId) {
+    return;
+  }
+
+  const run = await getLatestAutomationRunBySessionId(params.sessionId);
+  if (!run) {
+    return;
+  }
+
+  if (run.chatId && run.chatId !== params.chatId) {
+    return;
+  }
+
+  if (run.status !== "queued" && run.status !== "running") {
+    return;
+  }
+
+  await finalizeAutomationRun({
+    runId: run.id,
+    automationId: params.automationId,
+    status: "cancelled",
+    resultSummary: run.resultSummary ?? "Cancelled",
+    workflowRunId: run.workflowRunId ?? null,
+    prNumber: run.prNumber ?? null,
+    prUrl: run.prUrl ?? null,
+    compareUrl: run.compareUrl ?? null,
+    error: null,
+    needsAttentionReason: null,
+  });
 }

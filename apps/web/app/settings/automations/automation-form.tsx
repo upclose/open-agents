@@ -95,10 +95,7 @@ export function AutomationForm({
   );
   const { modelOptions, loading: modelsLoading } = useModelOptions();
   const modelItems = useMemo(
-    () => [
-      { id: "", label: "Default (from preferences)" },
-      ...modelOptions,
-    ],
+    () => [{ id: "", label: "Default (from preferences)" }, ...modelOptions],
     [modelOptions],
   );
 
