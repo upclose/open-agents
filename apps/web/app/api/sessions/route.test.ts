@@ -33,7 +33,7 @@ mock.module("@/lib/random-city", () => ({
 
 mock.module("@/lib/db/user-preferences", () => ({
   getUserPreferences: async () => ({
-    defaultModelId: "anthropic/claude-haiku-4.5",
+    defaultModelId: "openai/gpt-5.4",
     autoCommitPush: false,
     autoCreatePr: false,
     globalSkillRefs: [{ source: "vercel/ai", skillName: "ai-sdk" }],

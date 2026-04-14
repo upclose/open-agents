@@ -19,7 +19,7 @@ let preferences: MockPreferences;
 
 function resetPreferences() {
   preferences = {
-    defaultModelId: "anthropic/claude-haiku-4.5",
+    defaultModelId: "openai/gpt-5.4",
     defaultSubagentModelId: null,
     defaultSandboxType: "vercel",
     defaultDiffMode: "unified",

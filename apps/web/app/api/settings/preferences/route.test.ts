@@ -5,7 +5,7 @@ let currentSession: { user: { id: string } } | null = {
 };
 
 const preferencesState = {
-  defaultModelId: "anthropic/claude-haiku-4.5",
+  defaultModelId: "openai/gpt-5.4",
   defaultSubagentModelId: null as string | null,
   defaultSandboxType: "vercel" as const,
   defaultDiffMode: "unified" as const,

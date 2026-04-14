@@ -1,0 +1,1 @@
+ALTER TABLE "chats" ALTER COLUMN "model_id" SET DEFAULT 'openai/gpt-5.4';
