@@ -128,7 +128,10 @@ function QuickCreateInput() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
+    <form
+      onSubmit={handleSubmit}
+      className="border-input focus-within:border-ring focus-within:ring-ring/50 dark:bg-input/30 rounded-lg border bg-transparent shadow-xs transition-[color,box-shadow] focus-within:ring-[3px]"
+    >
       <textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -140,16 +143,18 @@ function QuickCreateInput() {
         }}
         placeholder="Describe what this automation should do..."
         rows={3}
-        className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 w-full resize-none rounded-lg border bg-transparent px-3 py-3 pr-12 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:ring-[3px]"
+        className="placeholder:text-muted-foreground min-h-28 w-full resize-none border-0 bg-transparent px-3 pt-3 pb-2 text-sm outline-none"
       />
-      <Button
-        type="submit"
-        size="icon"
-        disabled={!value.trim()}
-        className="absolute right-2 bottom-2 h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-      >
-        <ArrowUp className="h-4 w-4" />
-      </Button>
+      <div className="flex justify-end px-3 pb-3">
+        <Button
+          type="submit"
+          size="icon"
+          disabled={!value.trim()}
+          className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+        >
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+      </div>
     </form>
   );
 }
