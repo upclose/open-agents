@@ -236,7 +236,10 @@ function SettingsLayout({
         </SheetContent>
       </Sheet>
 
-      <main className="min-h-0 flex-1 overflow-y-auto">
+      <main
+        className="min-h-0 flex-1 overflow-y-auto"
+        style={{ scrollbarGutter: "stable" }}
+      >
         <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:hidden">
           <button
             type="button"
